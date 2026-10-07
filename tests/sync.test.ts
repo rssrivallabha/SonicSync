@@ -137,4 +137,4 @@ async function main(): Promise<void> {
   console.log("ALL PHASE-1 FOUNDATION TESTS PASSED");
 }
 
-main().catch((error: unknown) => { console.error(error); process.exitCode = 1; });
+main().catch((error: unknown) => { console.error(error); throw error; });
