@@ -16,6 +16,7 @@
   "include": [
     "core/**/*.ts",
     "hardware/**/*.ts",
+    "server/**/*.ts",
     "tests/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
