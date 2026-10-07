@@ -45,3 +45,7 @@ export interface CommandMessage extends BaseMessage {
 }
 
 export type ProtocolMessage = BaseMessage | CommandMessage;
+
+export function isCommandMessage(message: ProtocolMessage): message is CommandMessage {
+  return message.messageType === "COMMAND";
+}
