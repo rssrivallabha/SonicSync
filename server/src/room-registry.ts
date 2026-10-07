@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { AuthMessage } from "../../core/protocol/src/messages.js";
 import { createSessionProof, generateSessionToken, verifySessionProof } from "../../core/security/src/index.js";
 import { CommandSequencer, initialAuthority, RoomAuthority } from "../../core/sync/src/index.js";
@@ -37,7 +36,7 @@ export class RoomRegistry {
       roomCode = this.createCode();
     } while (this.idsByCode.has(roomCode));
 
-    const roomId = randomUUID();
+    const roomId = globalThis.crypto.randomUUID();
     const secretHex = generateSessionToken(32);
     const record: RoomRecord = {
       roomId,
