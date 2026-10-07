@@ -139,7 +139,67 @@ async function main(): Promise<void> {
     assert(validateProtocolMessage({ protocolVersion: 1, messageType: "HELLO", messageId: "m1", roomId: "room", senderId: "node", timelineEpoch: 0, commandRevision: 0, timestamp: 123 }).valid, "valid hello");
   });
 
-  console.log("ALL PHASE-1 FOUNDATION TESTS PASSED");
+
+  await run("command sequencer owns monotonic revisions and timeline epochs", () => {
+    const sequencer = new CommandSequencer();
+    const play = sequencer.next("PLAY", 10);
+    const volume = sequencer.next("VOLUME", 10, { volume: 0.5 });
+    const seek = sequencer.next("SEEK", 12, { positionSeconds: 12 });
+    equal(play.revision, 1, "first revision");
+    equal(play.timelineEpoch, 1, "first timeline epoch");
+    equal(volume.revision, 2, "volume revision");
+    equal(volume.timelineEpoch, 1, "volume does not alter timeline epoch");
+    equal(seek.revision, 3, "seek revision");
+    equal(seek.timelineEpoch, 2, "seek epoch");
+  });
+
+  await run("adaptive lead is driven by measured worst-case inputs", () => {
+    equal(
+      computeSyncLead({
+        minimumLeadSeconds: 0.1,
+        p99NetworkDelaySeconds: 0.24,
+        clockUncertaintySeconds: 0.012,
+        schedulingMarginSeconds: 0.03,
+      }),
+      0.24,
+      "lead should use maximum measured component",
+    );
+  });
+
+  await run("future target advances timeline independently of packet arrival", () => {
+    const target = createFutureSyncTarget(100, 12, 1, 7, 0.5);
+    equal(target.targetServerTimeSeconds, 100.5, "future time");
+    assert(Math.abs(target.targetPositionSeconds - 12.5) < 1e-12, "future position");
+    equal(target.targetEpoch, 7, "epoch");
+  });
+
+  await run("phase error exposes signed and absolute skew", () => {
+    const error = computePhaseError(10, 10.003, 0.0005);
+    assert(error.signedErrorSeconds < 0, "signed direction");
+    assert(Math.abs(error.absoluteErrorSeconds - 0.003) < 1e-12, "absolute error");
+    equal(error.withinDeadband, false, "deadband");
+  });
+
+  await run("deterministic convergence simulation is reproducible", () => {
+    const config = {
+      kp: 0.2,
+      ki: 0.01,
+      kd: 0.01,
+      maxCorrection: 0.005,
+      integralLimit: 0.1,
+      deadbandSeconds: 0.0005,
+    };
+    const nodes = [
+      { id: "a", initialPhaseErrorSeconds: 0.02, driftPpm: 20, confidence: 1 },
+      { id: "b", initialPhaseErrorSeconds: -0.015, driftPpm: -10, confidence: 1 },
+    ];
+    const first = simulateConvergence(nodes, 5, 0.1, config);
+    const second = simulateConvergence(nodes, 5, 0.1, config);
+    assert(Math.abs(first.finalRangeSeconds - second.finalRangeSeconds) < 1e-15, "simulation reproducibility");
+    assert(first.samples.length > 0, "simulation samples");
+  });
+
+  console.log("ALL PHASE-1/2 FOUNDATION TESTS PASSED");
 }
 
 main().catch((error: unknown) => { console.error(error); throw error; });
