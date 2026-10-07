@@ -1,4 +1,4 @@
-import { ClockFit } from "./clock";
+import { ClockFit } from "./clock.js";
 
 export class ClockModel {
   private fit: ClockFit = { offsetSeconds: 0, driftPpm: 0, uncertaintySeconds: Number.POSITIVE_INFINITY, confidence: 0 };
