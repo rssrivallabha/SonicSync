@@ -1,6 +1,3 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-
 import {
   applyCommand,
   initialAuthority,
@@ -16,7 +13,33 @@ import {
 
 import { validateProtocolMessage } from "../core/protocol/src";
 
-test("authoritative timeline advances only while playing", () => {
+function assert(condition: unknown, message: string): void {
+  if (!condition) throw new Error(message);
+}
+
+function equal<T>(actual: T, expected: T, message: string): void {
+  if (actual !== expected) {
+    throw new Error(`${message}: expected ${String(expected)}, got ${String(actual)}`);
+  }
+}
+
+function deepEqual(actual: unknown, expected: unknown, message: string): void {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${message}: values differ`);
+  }
+}
+
+function run(name: string, fn: () => void): void {
+  try {
+    fn();
+    console.log(`PASS ${name}`);
+  } catch (error) {
+    console.error(`FAIL ${name}`, error);
+    throw error;
+  }
+}
+
+run("authoritative timeline advances only while playing", () => {
   const authority = initialAuthority();
   const playing = applyCommand(authority, {
     kind: "PLAY",
@@ -26,7 +49,7 @@ test("authoritative timeline advances only while playing", () => {
     positionSeconds: 5,
   });
 
-  assert.equal(positionAt(playing, 12), 7);
+  equal(positionAt(playing, 12), 7, "playing timeline");
 
   const paused = applyCommand(playing, {
     kind: "PAUSE",
@@ -35,11 +58,11 @@ test("authoritative timeline advances only while playing", () => {
     effectiveAtSeconds: 20,
   });
 
-  assert.equal(paused.playbackState, "PAUSED");
-  assert.ok(isApproximatelyEqual(positionAt(paused, 100), 15, 1e-9));
+  equal(paused.playbackState, "PAUSED", "pause state");
+  assert(isApproximatelyEqual(positionAt(paused, 100), 15, 1e-9), "pause must retain position");
 });
 
-test("stop retains position and resume continues from retained position", () => {
+run("stop retains position and resume continues from retained position", () => {
   let a = initialAuthority();
 
   a = applyCommand(a, {
@@ -58,7 +81,7 @@ test("stop retains position and resume continues from retained position", () => 
   });
 
   const retained = positionAt(a, 100);
-  assert.equal(retained, 10);
+  equal(retained, 10, "retained stop position");
 
   a = applyCommand(a, {
     kind: "PLAY",
@@ -67,10 +90,10 @@ test("stop retains position and resume continues from retained position", () => 
     effectiveAtSeconds: 20,
   });
 
-  assert.equal(positionAt(a, 25), 15);
+  equal(positionAt(a, 25), 15, "resume continuity");
 });
 
-test("stale command cannot revive an obsolete timeline", () => {
+run("stale command cannot revive an obsolete timeline", () => {
   let a = initialAuthority();
 
   a = applyCommand(a, {
@@ -81,7 +104,6 @@ test("stale command cannot revive an obsolete timeline", () => {
     positionSeconds: 4,
   });
 
-  const before = a;
   const stale = applyCommand(a, {
     kind: "PLAY",
     revision: 99,
@@ -90,15 +112,15 @@ test("stale command cannot revive an obsolete timeline", () => {
     positionSeconds: 0,
   });
 
-  assert.deepEqual(stale, before);
+  deepEqual(stale, a, "stale command guard");
 });
 
-test("invalid state transitions are rejected", () => {
+run("invalid state transitions are rejected", () => {
   const result = transition("STOPPED", "PAUSE");
-  assert.equal(result.accepted, false);
+  equal(result.accepted, false, "invalid transition");
 });
 
-test("NTP-style clock probe and robust estimator produce finite values", () => {
+run("NTP-style clock probe and robust estimator produce finite values", () => {
   const samples = [
     { t1: 0, t2: 0.012, t3: 0.013, t4: 0.020 },
     { t1: 1, t2: 1.0121, t3: 1.0131, t4: 1.0202 },
@@ -107,17 +129,17 @@ test("NTP-style clock probe and robust estimator produce finite values", () => {
   ];
 
   const single = probeOffset(samples[0]);
-  assert.ok(single.offsetSeconds > 0);
-  assert.ok(single.rttSeconds >= 0);
+  assert(single.offsetSeconds > 0, "offset should be positive");
+  assert(single.rttSeconds >= 0, "RTT should be non-negative");
 
   const fit = estimateClock(samples);
-  assert.ok(Number.isFinite(fit.offsetSeconds));
-  assert.ok(Number.isFinite(fit.driftPpm));
-  assert.ok(fit.uncertaintySeconds > 0);
-  assert.ok(fit.confidence > 0);
+  assert(Number.isFinite(fit.offsetSeconds), "finite offset");
+  assert(Number.isFinite(fit.driftPpm), "finite drift");
+  assert(fit.uncertaintySeconds > 0, "uncertainty exists");
+  assert(fit.confidence > 0, "confidence exists");
 });
 
-test("rate controller fails safe when clock confidence is poor", () => {
+run("rate controller fails safe when clock confidence is poor", () => {
   const result = updateRateController(
     { integral: 0, previousError: 0 },
     { phaseErrorSeconds: 0.1, driftPpm: 100, confidence: 0.2, dtSeconds: 0.1 },
@@ -131,11 +153,11 @@ test("rate controller fails safe when clock confidence is poor", () => {
     },
   );
 
-  assert.equal(result.rate, 1);
-  assert.equal(result.state.integral, 0);
+  equal(result.rate, 1, "unsafe correction must be disabled");
+  equal(result.state.integral, 0, "integrator must reset");
 });
 
-test("sync metrics compute distribution of playback error", () => {
+run("sync metrics compute distribution of playback error", () => {
   const observations = [
     { deviceId: "a", positionSeconds: 10.000, observedAtSeconds: 1, confidence: 1 },
     { deviceId: "b", positionSeconds: 10.003, observedAtSeconds: 1, confidence: 1 },
@@ -143,13 +165,13 @@ test("sync metrics compute distribution of playback error", () => {
   ];
 
   const metrics = computeSyncMetrics(observations, 10);
-  assert.equal(metrics.sampleCount, 3);
-  assert.equal(positionRangeSeconds(observations), 0.005);
-  assert.ok(Math.abs(metrics.maxErrorSeconds - 0.003) < 1e-12);
+  equal(metrics.sampleCount, 3, "sample count");
+  assert(Math.abs(positionRangeSeconds(observations) - 0.005) < 1e-12, "position range");
+  assert(Math.abs(metrics.maxErrorSeconds - 0.003) < 1e-12, "max error");
 });
 
-test("protocol validator rejects malformed messages and accepts valid base messages", () => {
-  assert.equal(validateProtocolMessage({}).valid, false);
+run("protocol validator rejects malformed messages and accepts valid base messages", () => {
+  assert(!validateProtocolMessage({}).valid, "empty object must fail");
 
   const result = validateProtocolMessage({
     protocolVersion: 1,
@@ -162,5 +184,7 @@ test("protocol validator rejects malformed messages and accepts valid base messa
     timestamp: 123,
   });
 
-  assert.equal(result.valid, true);
+  assert(result.valid, "valid hello must pass");
 });
+
+console.log("ALL PHASE-1 FOUNDATION TESTS PASSED");
