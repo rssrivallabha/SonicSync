@@ -2,13 +2,16 @@ import { PlaybackObservation, SyncMetrics } from "./types";
 
 function percentile(values: readonly number[], p: number): number {
   if (values.length === 0) return 0;
+
   const sorted = [...values].sort((a, b) => a - b);
   const index = (sorted.length - 1) * p;
   const lower = Math.floor(index);
   const upper = Math.ceil(index);
-  if (lower === upper) return sorted[lower];
+
+  if (lower === upper) return sorted[lower]!;
+
   const weight = index - lower;
-  return sorted[lower] + (sorted[upper] - sorted[lower]) * weight;
+  return sorted[lower]! + (sorted[upper]! - sorted[lower]!) * weight;
 }
 
 export function computeSyncMetrics(
@@ -43,8 +46,11 @@ export function computeSyncMetrics(
   };
 }
 
-export function positionRangeSeconds(observations: readonly PlaybackObservation[]): number {
+export function positionRangeSeconds(
+  observations: readonly PlaybackObservation[],
+): number {
   if (observations.length < 2) return 0;
+
   const positions = observations.map((o) => o.positionSeconds);
   return Math.max(...positions) - Math.min(...positions);
 }
