@@ -1,6 +1,6 @@
 import { CommandMessage } from "../../core/protocol/src/messages.js";
 import { CommandGate } from "../../core/security/src/index.js";
-import { applyCommand, CommandSequencer, initialAuthority, RoomAuthority } from "../../core/sync/src/index.js";
+import { applyCommand, RoomAuthority } from "../../core/sync/src/index.js";
 import { RoomRegistry } from "./room-registry.js";
 
 export interface CommandResult {
@@ -52,14 +52,26 @@ export class RoomController {
     } = {},
   ): CommandResult {
     const current = this.registry.getAuthority(roomId);
-    const sequencer = new CommandSequencer();
+    const timelineChanging = new Set([
+      "PLAY",
+      "PAUSE",
+      "STOP",
+      "RESET",
+      "SEEK",
+      "RATE",
+    ]).has(command);
 
-    // Synchronize the sequencer to the authority revision/epoch before issuing.
-    while (sequencer.snapshot().revision < current.revision) {
-      sequencer.next("VOLUME", effectiveAtSeconds, { volume: current.volume });
-    }
-
-    const generated = sequencer.next(command, effectiveAtSeconds, options);
+    const generated = {
+      kind:
+        command === "SYNC"
+          ? "PLAY"
+          : command,
+      revision: current.revision + 1,
+      timelineEpoch:
+        current.timelineEpoch + (timelineChanging ? 1 : 0),
+      effectiveAtSeconds,
+      ...options,
+    } as const;
     const gate = this.gateFor(roomId);
     const decision = gate.check({
       senderId,
@@ -73,6 +85,10 @@ export class RoomController {
 
     if (!decision.accepted) {
       return { accepted: false, reason: decision.reason, authority: current };
+    }
+
+    if (command === "SYNC") {
+      return { accepted: true, reason: "sync request accepted", authority: current };
     }
 
     const authority = applyCommand(current, generated);
