@@ -314,7 +314,7 @@ void audioTask(void *) {
 
         marker(true);
 
-        const size_t frames = pcmRing.pop(dmaBuffer, 512);
+        const size_t frames = pcmRing.pop(dmaBuffer, AUDIO_BLOCK_FRAMES);
 
         if (frames == 0) {
             memset(dmaBuffer, 0, sizeof(dmaBuffer));
