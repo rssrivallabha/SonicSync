@@ -1,6 +1,6 @@
 import { createConnection, createServer, Server, Socket } from "node:net";
-import { decodeFrames, encodeFrame } from "./framing";
-import { PeerAddress, Transport, TransportQuality } from "./types";
+import { decodeFrames, encodeFrame } from "./framing.js";
+import { PeerAddress, Transport, TransportQuality } from "./types.js";
 
 function parseEndpoint(endpoint: string): { readonly host: string; readonly port: number } {
   const split = endpoint.lastIndexOf(":");
@@ -14,7 +14,7 @@ function parseEndpoint(endpoint: string): { readonly host: string; readonly port
 export class TcpTransport implements Transport {
   readonly kind = "LAN" as const;
   private socket: Socket | null = null;
-  private remainder = new Uint8Array(0);
+  private remainder: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
   private listeners = new Set<(payload: Uint8Array) => void>();
   private quality: TransportQuality = { rttMs: Number.NaN, jitterMs: Number.NaN, packetLossRatio: Number.NaN, throughputKbps: Number.NaN };
 
