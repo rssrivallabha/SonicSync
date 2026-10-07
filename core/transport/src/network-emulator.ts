@@ -1,4 +1,4 @@
-import { Transport, TransportQuality } from "./types";
+import { Transport, TransportQuality } from "./types.js";
 
 export interface NetworkProfile {
   readonly latencyMs: number;
