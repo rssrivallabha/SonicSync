@@ -1,4 +1,4 @@
-import { PlaybackState, RoomAuthority } from "./types";
+import { PlaybackState, RoomAuthority } from "./types.js";
 
 export type ConnectionState = "DISCONNECTED" | "DISCOVERING" | "CONNECTING" | "AUTHENTICATING" | "CONNECTED" | "DEGRADED" | "RECONNECTING" | "FAILED";
 
