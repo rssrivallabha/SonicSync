@@ -7,14 +7,21 @@ export interface NetworkProfile {
   readonly duplicateRatio: number;
 }
 
+export type RandomSource = () => number;
+
 export class NetworkEmulator implements Transport {
   readonly kind = "IN_MEMORY" as const;
   private readonly unsubscribe: () => void;
   private profile: NetworkProfile;
   private readonly listeners = new Set<(payload: Uint8Array) => void>();
 
-  constructor(private readonly inner: Transport, profile: NetworkProfile) {
+  constructor(
+    private readonly inner: Transport,
+    profile: NetworkProfile,
+    private readonly random: RandomSource = Math.random,
+  ) {
     this.validate(profile);
+    if (random() < 0 || random() >= 1) throw new RangeError("random source must return values in [0,1)");
     this.profile = { ...profile };
     this.unsubscribe = inner.onMessage((payload) => {
       for (const listener of this.listeners) listener(new Uint8Array(payload));
@@ -35,10 +42,12 @@ export class NetworkEmulator implements Transport {
   onMessage(handler: (payload: Uint8Array) => void): () => void { this.listeners.add(handler); return () => { this.listeners.delete(handler); }; }
 
   async send(payload: Uint8Array): Promise<void> {
-    if (Math.random() < this.profile.packetLossRatio) return;
-    const delay = Math.max(0, this.profile.latencyMs + (Math.random() * 2 - 1) * this.profile.jitterMs);
+    if (this.random() < this.profile.packetLossRatio) return;
+    const delay = Math.max(0, this.profile.latencyMs + (this.random() * 2 - 1) * this.profile.jitterMs);
     const message = new Uint8Array(payload);
-    await new Promise<void>((resolve, reject) => setTimeout(() => this.inner.send(message).then(() => resolve()).catch(reject), delay));
-    if (Math.random() < this.profile.duplicateRatio) await new Promise<void>((resolve, reject) => this.inner.send(message).then(() => resolve()).catch(reject));
+    await new Promise<void>((resolve, reject) => setTimeout(() => this.inner.send(message).then(resolve).catch(reject), delay));
+    if (this.random() < this.profile.duplicateRatio) {
+      await new Promise<void>((resolve, reject) => setTimeout(() => this.inner.send(message).then(resolve).catch(reject), 0));
+    }
   }
 }
