@@ -1,4 +1,4 @@
-import { updateRateController, RateControllerConfig, RateControllerState } from "./rate-controller";
+import { updateRateController, RateControllerConfig, RateControllerState } from "./rate-controller.js";
 
 export interface SimulatedNode {
   readonly id: string;
@@ -39,7 +39,8 @@ export function simulateConvergence(
       const node = nodes[i]!;
       const correction = updateRateController(states[i]!, { phaseErrorSeconds: errors[i]!, driftPpm: node.driftPpm, confidence: node.confidence, dtSeconds: stepSeconds }, config);
       states[i] = correction.state;
-      errors[i] -= (correction.rate - 1) * stepSeconds;
+      const currentError = errors[i]!;
+      errors[i] = currentError - (correction.rate - 1) * stepSeconds;
       errors[i] += (node.driftPpm / 1e6) * stepSeconds;
     }
 
