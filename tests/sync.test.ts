@@ -19,6 +19,8 @@ import {
   ClockModel,
   PlaybackScheduler,
 } from "../core/sync/src";
+import { ChunkStore, sha256Hex, validateTrackMetadata } from "../core/media/src";
+import { decodeFrames, encodeFrame, NetworkEmulator } from "../core/transport/src";
 
 import { validateProtocolMessage } from "../core/protocol/src";
 import { InMemoryTransport } from "../core/transport/src";
@@ -227,7 +229,81 @@ async function main(): Promise<void> {
     equal(scheduler.inspect(10, 5, 1).kind, "STALE", "stale");
   });
 
-  console.log("ALL PHASE-1/2 FOUNDATION TESTS PASSED");
+
+  await run("media chunk store is resumable and ordered", () => {
+    const store = new ChunkStore();
+    store.put({ index: 1, bytes: new Uint8Array([3, 4]) });
+    assert(store.has(1), "stored chunk");
+    assert(JSON.stringify(store.missing(3)) === JSON.stringify([0, 2]), "missing chunks");
+    store.put({ index: 0, bytes: new Uint8Array([1, 2]) });
+    store.put({ index: 2, bytes: new Uint8Array([5]) });
+    assert(JSON.stringify(Array.from(store.assemble(3))) === JSON.stringify([1, 2, 3, 4, 5]), "ordered assembly");
+  });
+
+  await run("track metadata rejects unsafe paths", () => {
+    validateTrackMetadata({
+      trackId: "track-1",
+      hash: "a".repeat(64),
+      sizeBytes: 10,
+      durationSeconds: 2,
+      sampleRate: 48000,
+      channels: 2,
+      codec: "PCM",
+      filename: "track.wav",
+    });
+    let rejected = false;
+    try {
+      validateTrackMetadata({
+        trackId: "track-1",
+        hash: "a".repeat(64),
+        sizeBytes: 10,
+        durationSeconds: 2,
+        sampleRate: 48000,
+        channels: 2,
+        codec: "PCM",
+        filename: "../escape.wav",
+      });
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, "path traversal must be rejected");
+  });
+
+  await run("frame codec handles complete and partial frames", () => {
+    const a = encodeFrame(new Uint8Array([1, 2]));
+    const b = encodeFrame(new Uint8Array([3]));
+    const combined = new Uint8Array(a.length + b.length);
+    combined.set(a);
+    combined.set(b, a.length);
+    const decoded = decodeFrames(combined);
+    equal(decoded.frames.length, 2, "frame count");
+    equal(decoded.frames[1]![0], 3, "second payload");
+    const partial = decodeFrames(combined.slice(0, a.length + 2));
+    equal(partial.frames.length, 1, "partial count");
+    assert(partial.remainder.length > 0, "partial remainder");
+  });
+
+  await run("SHA-256 hashing is content-addressable", async () => {
+    const digest = await sha256Hex(new TextEncoder().encode("abc"));
+    equal(digest, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "sha256");
+  });
+
+  await run("network emulator can run without packet loss", async () => {
+    const [a, b] = InMemoryTransport.pair();
+    const ea = new NetworkEmulator(a, { latencyMs: 0, jitterMs: 0, packetLossRatio: 0, duplicateRatio: 0 });
+    await a.connect({ peerId: "b", kind: "IN_MEMORY", endpoint: "b" });
+    await b.connect({ peerId: "a", kind: "IN_MEMORY", endpoint: "a" });
+    let seen = 0;
+    const unsubscribe = b.onMessage(() => { seen += 1; });
+    await ea.connect({ peerId: "b", kind: "IN_MEMORY", endpoint: "b" });
+    await ea.send(new Uint8Array([7]));
+    equal(seen, 1, "delivery");
+    unsubscribe();
+    await ea.close();
+    await b.close();
+  });
+
+  console.log("ALL PHASE-1/2/3 FOUNDATION TESTS PASSED");
 }
 
 main().catch((error: unknown) => { console.error(error); throw error; });
