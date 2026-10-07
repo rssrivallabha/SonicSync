@@ -1,4 +1,4 @@
-import { PlaybackState } from "./types";
+import { PlaybackState } from "./types.js";
 
 export type PlayerEvent =
   | "CONNECT"
