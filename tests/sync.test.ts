@@ -26,6 +26,7 @@ import { validateProtocolMessage } from "../core/protocol/src/index.js";
 import { InMemoryTransport } from "../core/transport/src/index.js";
 import { measureMarker } from "../hardware/node/src/index.js";
 import { TokenBucket, ReplayGuard, generateDeviceIdentity, generateSessionToken, isCommandAuthorized, CommandGate, createSessionProof, verifySessionProof } from "../core/security/src/index.js";
+import { RoomRegistry } from "../server/src/room-registry.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -415,6 +416,28 @@ async function main(): Promise<void> {
     assert(await verifySessionProof(secret, "room", "node", "0123456789abcdef", proof), "valid proof");
     assert(!(await verifySessionProof(secret, "room", "attacker", "0123456789abcdef", proof)), "sender binding");
     assert(!(await verifySessionProof("cd".repeat(16), "room", "node", "0123456789abcdef", proof)), "secret binding");
+  });
+
+
+  await run("room registry binds authentication to room secret and sender identity", async () => {
+    const registry = new RoomRegistry();
+    const created = registry.createRoom("host");
+    const nonce = registry.issueParticipantNonce(created.roomId);
+    const proof = await registry.createAuthProof(created.roomId, "node", nonce);
+    const participant = await registry.verifyAuthentication({
+      protocolVersion: 1,
+      messageType: "AUTH",
+      messageId: "auth-1",
+      roomId: created.roomId,
+      senderId: "node",
+      timelineEpoch: 0,
+      commandRevision: 0,
+      timestamp: 1,
+      nonce,
+      proof,
+    }, 1);
+    equal(participant.role, "PARTICIPANT", "participant role");
+    assert(registry.getRoomIdByCode(created.roomCode) === created.roomId, "room code lookup");
   });
 
   console.log("ALL PHASE-1/2/3/4 FOUNDATION TESTS PASSED");
