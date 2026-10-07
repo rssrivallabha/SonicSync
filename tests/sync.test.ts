@@ -20,7 +20,7 @@ import {
   PlaybackScheduler,
 } from "../core/sync/src";
 import { ChunkStore, sha256Hex, validateTrackMetadata } from "../core/media/src";
-import { decodeFrames, encodeFrame, NetworkEmulator } from "../core/transport/src";
+import { decodeFrames, encodeFrame, NetworkEmulator, listenTcp } from "../core/transport/src";
 
 import { validateProtocolMessage } from "../core/protocol/src";
 import { InMemoryTransport } from "../core/transport/src";
@@ -301,6 +301,34 @@ async function main(): Promise<void> {
     unsubscribe();
     await ea.close();
     await b.close();
+  });
+
+
+  await run("LAN TCP transport exchanges framed payloads", async () => {
+    let serverTransport: import("../core/transport/src").TcpTransport | null = null;
+    const listener = await listenTcp("127.0.0.1", 0, (transport) => {
+      serverTransport = transport;
+      transport.onMessage((payload) => { void transport.send(payload); });
+    });
+
+    const client = new (await import("../core/transport/src")).TcpTransport();
+    await client.connect({ peerId: "server", kind: "LAN", endpoint: `127.0.0.1:${listener.port}` });
+
+    let received: Uint8Array | null = null;
+    const unsubscribe = client.onMessage((payload) => { received = payload; });
+    await client.send(new Uint8Array([9, 8, 7]));
+
+    const deadline = Date.now() + 1000;
+    while (received === null && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    assert(received !== null, "TCP echo should arrive");
+    assert(JSON.stringify(Array.from(received!)) === JSON.stringify([9, 8, 7]), "TCP payload");
+    unsubscribe();
+    await client.close();
+    if (serverTransport !== null) await serverTransport.close();
+    await listener.close();
   });
 
   console.log("ALL PHASE-1/2/3 FOUNDATION TESTS PASSED");
