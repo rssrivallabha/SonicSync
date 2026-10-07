@@ -8,3 +8,4 @@ export * from "./session";
 export * from "./sequencer";
 export * from "./lead";
 export * from "./phase";
+export * from "./simulator";
