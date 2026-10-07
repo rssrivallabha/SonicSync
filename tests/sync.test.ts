@@ -25,7 +25,7 @@ import { decodeFrames, encodeFrame, NetworkEmulator, listenTcp, TcpTransport } f
 import { validateProtocolMessage } from "../core/protocol/src/index.js";
 import { InMemoryTransport } from "../core/transport/src/index.js";
 import { measureMarker } from "../hardware/node/src/index.js";
-import { TokenBucket, ReplayGuard, generateDeviceIdentity, generateSessionToken, isCommandAuthorized } from "../core/security/src/index.js";
+import { TokenBucket, ReplayGuard, generateDeviceIdentity, generateSessionToken, isCommandAuthorized, CommandGate } from "../core/security/src/index.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -391,6 +391,21 @@ async function main(): Promise<void> {
     const token = generateSessionToken(32);
     assert(/^[a-f0-9]{32}$/.test(device), "device identity format");
     assert(/^[a-f0-9]{64}$/.test(token), "session token format");
+  });
+
+
+  await run("command gate combines authorization rate limiting and replay defense", () => {
+    const gate = new CommandGate(1, 1);
+    assert(gate.check({ senderId: "node", role: "PARTICIPANT", command: "PLAY", messageId: "m1", sequence: 1, nowSeconds: 0 }).accepted === false, "participant control denied");
+    assert(gate.check({ senderId: "node", role: "PARTICIPANT", command: "SYNC", messageId: "m2", sequence: 2, nowSeconds: 0 }).accepted === true, "sync allowed");
+    assert(gate.check({ senderId: "node", role: "PARTICIPANT", command: "SYNC", messageId: "m3", sequence: 3, nowSeconds: 0 }).accepted === false, "burst limited");
+  });
+
+  await run("oversized frame is rejected before allocation", () => {
+    const header = new Uint8Array([0x00, 0x20, 0x00, 0x00]);
+    let rejected = false;
+    try { decodeFrames(header, 1024); } catch { rejected = true; }
+    assert(rejected, "oversized frame header must fail closed");
   });
 
   console.log("ALL PHASE-1/2/3/4 FOUNDATION TESTS PASSED");
