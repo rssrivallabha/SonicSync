@@ -27,6 +27,7 @@ import { InMemoryTransport } from "../core/transport/src/index.js";
 import { measureMarker } from "../hardware/node/src/index.js";
 import { TokenBucket, ReplayGuard, generateDeviceIdentity, generateSessionToken, isCommandAuthorized, CommandGate, createSessionProof, verifySessionProof } from "../core/security/src/index.js";
 import { RoomRegistry } from "../server/src/room-registry.js";
+import { RoomController } from "../server/src/room-controller.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -438,6 +439,35 @@ async function main(): Promise<void> {
     }, 1);
     equal(participant.role, "PARTICIPANT", "participant role");
     assert(registry.getRoomIdByCode(created.roomCode) === created.roomId, "room code lookup");
+  });
+
+
+  await run("room controller applies host commands against one authority", () => {
+    const controller = new RoomController();
+    const room = controller.createRoom("host");
+    const result = controller.issueCommand(
+      room.roomId,
+      "host",
+      "HOST",
+      "PLAY",
+      1,
+      2,
+      { positionSeconds: 0 },
+    );
+    equal(result.accepted, true, "host command");
+    equal(result.authority.playbackState, "PLAYING", "authority state");
+    equal(result.authority.revision, 1, "revision");
+    equal(result.authority.timelineEpoch, 1, "epoch");
+
+    const denied = controller.issueCommand(
+      room.roomId,
+      "participant",
+      "PARTICIPANT",
+      "PAUSE",
+      2,
+      3,
+    );
+    equal(denied.accepted, false, "participant pause denied");
   });
 
   console.log("ALL PHASE-1/2/3/4 FOUNDATION TESTS PASSED");
