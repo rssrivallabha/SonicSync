@@ -25,7 +25,7 @@ export function validateProtocolMessage(value: unknown, limits: ValidationLimits
   if (message.protocolVersion !== PROTOCOL_VERSION) return invalid("unsupported protocol version");
 
   if (typeof message.messageType !== "string" || !MESSAGE_TYPES.has(message.messageType as MessageType)) return invalid("invalid messageType");
-  const stringLimits: ReadonlyArray<[keyof Pick<ProtocolMessage, "messageId" | "roomId" | "senderId">, number]> = [[
+  const stringLimits: ReadonlyArray<[keyof Pick<ProtocolMessage, "messageId" | "roomId" | "senderId">, number]> = [
     ["messageId", limits.maxMessageIdLength],
     ["roomId", limits.maxRoomIdLength],
     ["senderId", limits.maxSenderIdLength],
