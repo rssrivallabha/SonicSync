@@ -1,2 +1,2 @@
-export * from "./messages";
+export * from "./messages.js";
 export * from "./validation";
