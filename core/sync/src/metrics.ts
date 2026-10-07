@@ -1,4 +1,4 @@
-import { PlaybackObservation, SyncMetrics } from "./types";
+import { PlaybackObservation, SyncMetrics } from "./types.js";
 
 function percentile(values: readonly number[], p: number): number {
   if (values.length === 0) return 0;
