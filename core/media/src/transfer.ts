@@ -1,4 +1,4 @@
-import { ChunkStore, MediaChunk } from "./chunk-store";
+import { ChunkStore, MediaChunk } from "./chunk-store.js";
 
 export interface TransferPlan {
   readonly totalBytes: number;
