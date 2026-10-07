@@ -1,4 +1,4 @@
-import { TimelineCommand } from "./types";
+import { TimelineCommand } from "./types.js";
 
 export interface CommandOptions {
   readonly positionSeconds?: number;
