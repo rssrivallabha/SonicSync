@@ -21,13 +21,13 @@ export function positionAt(authority: RoomAuthority, nowSeconds: number): number
 function nextAuthority(
   authority: RoomAuthority,
   patch: Partial<RoomAuthority>,
-  incrementEpoch: boolean,
+  command: TimelineCommand,
 ): RoomAuthority {
   return {
     ...authority,
     ...patch,
-    timelineEpoch: authority.timelineEpoch + (incrementEpoch ? 1 : 0),
-    revision: authority.revision + 1,
+    timelineEpoch: command.timelineEpoch,
+    revision: command.revision,
   };
 }
 
@@ -62,20 +62,21 @@ export function applyCommand(
   }
 
   switch (command.kind) {
-    case "PLAY": {
+    case "PLAY":
       return nextAuthority(
         authority,
         {
           playbackState: "PLAYING",
-          anchorPositionSeconds: command.positionSeconds ?? positionAt(authority, command.effectiveAtSeconds),
+          anchorPositionSeconds:
+            command.positionSeconds ??
+            positionAt(authority, command.effectiveAtSeconds),
           anchorTimeSeconds: command.effectiveAtSeconds,
           rate: command.rate ?? authority.rate,
         },
-        true,
+        command,
       );
-    }
 
-    case "PAUSE": {
+    case "PAUSE":
       return nextAuthority(
         authority,
         {
@@ -83,11 +84,10 @@ export function applyCommand(
           anchorPositionSeconds: positionAt(authority, command.effectiveAtSeconds),
           anchorTimeSeconds: null,
         },
-        true,
+        command,
       );
-    }
 
-    case "STOP": {
+    case "STOP":
       return nextAuthority(
         authority,
         {
@@ -95,11 +95,10 @@ export function applyCommand(
           anchorPositionSeconds: positionAt(authority, command.effectiveAtSeconds),
           anchorTimeSeconds: null,
         },
-        true,
+        command,
       );
-    }
 
-    case "RESET": {
+    case "RESET":
       return nextAuthority(
         authority,
         {
@@ -107,44 +106,54 @@ export function applyCommand(
           anchorPositionSeconds: 0,
           anchorTimeSeconds: null,
         },
-        true,
+        command,
       );
-    }
 
-    case "SEEK": {
+    case "SEEK":
       if (command.positionSeconds === undefined || command.positionSeconds < 0) {
         throw new RangeError("SEEK requires a non-negative positionSeconds");
       }
+
       return nextAuthority(
         authority,
         {
-          playbackState: authority.playbackState === "PLAYING" ? "PLAYING" : "PAUSED",
+          playbackState:
+            authority.playbackState === "PLAYING" ? "PLAYING" : "PAUSED",
           anchorPositionSeconds: command.positionSeconds,
           anchorTimeSeconds:
-            authority.playbackState === "PLAYING" ? command.effectiveAtSeconds : null,
+            authority.playbackState === "PLAYING"
+              ? command.effectiveAtSeconds
+              : null,
         },
-        true,
+        command,
       );
-    }
 
     case "RATE": {
-      if (command.rate === undefined || !Number.isFinite(command.rate) || command.rate <= 0) {
+      if (
+        command.rate === undefined ||
+        !Number.isFinite(command.rate) ||
+        command.rate <= 0
+      ) {
         throw new RangeError("RATE requires a positive finite rate");
       }
+
       const position = positionAt(authority, command.effectiveAtSeconds);
+
       return nextAuthority(
         authority,
         {
           anchorPositionSeconds: position,
           anchorTimeSeconds:
-            authority.playbackState === "PLAYING" ? command.effectiveAtSeconds : null,
+            authority.playbackState === "PLAYING"
+              ? command.effectiveAtSeconds
+              : null,
           rate: command.rate,
         },
-        false,
+        command,
       );
     }
 
-    case "VOLUME": {
+    case "VOLUME":
       if (
         command.volume === undefined ||
         !Number.isFinite(command.volume) ||
@@ -153,18 +162,22 @@ export function applyCommand(
       ) {
         throw new RangeError("VOLUME must be between 0 and 1");
       }
-      return nextAuthority(authority, { volume: command.volume }, false);
-    }
 
-    case "MUTE": {
+      return nextAuthority(authority, { volume: command.volume }, command);
+
+    case "MUTE":
       if (command.mute === undefined) {
         throw new RangeError("MUTE requires mute");
       }
-      return nextAuthority(authority, { mute: command.mute }, false);
-    }
+
+      return nextAuthority(authority, { mute: command.mute }, command);
   }
 }
 
-export function isApproximatelyEqual(a: number, b: number, toleranceSeconds: number): boolean {
+export function isApproximatelyEqual(
+  a: number,
+  b: number,
+  toleranceSeconds: number,
+): boolean {
   return Math.abs(a - b) <= toleranceSeconds + EPSILON;
 }
