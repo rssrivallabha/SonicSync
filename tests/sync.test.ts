@@ -16,6 +16,8 @@ import {
   createFutureSyncTarget,
   computePhaseError,
   simulateConvergence,
+  ClockModel,
+  PlaybackScheduler,
 } from "../core/sync/src";
 
 import { validateProtocolMessage } from "../core/protocol/src";
@@ -197,6 +199,32 @@ async function main(): Promise<void> {
     const second = simulateConvergence(nodes, 5, 0.1, config);
     assert(Math.abs(first.finalRangeSeconds - second.finalRangeSeconds) < 1e-15, "simulation reproducibility");
     assert(first.samples.length > 0, "simulation samples");
+  });
+
+
+  await run("clock model converts between local and remote domains", () => {
+    const model = new ClockModel();
+    model.update(
+      { offsetSeconds: 0.01, driftPpm: 50, uncertaintySeconds: 0.001, confidence: 1 },
+      100,
+    );
+    const remote = model.localToRemote(110);
+    const local = model.remoteToLocal(remote);
+    assert(Math.abs(local - 110) < 1e-12, "clock round trip");
+    equal(model.isLocked(), true, "clock lock");
+  });
+
+  await run("scheduler rejects stale playback plans", () => {
+    const scheduler = new PlaybackScheduler();
+    scheduler.arm({
+      targetTimeSeconds: 10,
+      targetPositionSeconds: 3,
+      timelineEpoch: 4,
+      commandRevision: 8,
+    });
+    equal(scheduler.inspect(9, 4, 8).kind, "WAIT", "wait");
+    equal(scheduler.inspect(10, 4, 8).kind, "START", "start");
+    equal(scheduler.inspect(10, 5, 1).kind, "STALE", "stale");
   });
 
   console.log("ALL PHASE-1/2 FOUNDATION TESTS PASSED");
