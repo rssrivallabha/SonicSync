@@ -30,9 +30,17 @@ export class TcpTransport implements Transport {
       const joined = new Uint8Array(this.remainder.length + data.length);
       joined.set(this.remainder);
       joined.set(data, this.remainder.length);
-      const decoded = decodeFrames(joined);
-      this.remainder = decoded.remainder;
-      for (const frame of decoded.frames) for (const listener of this.listeners) listener(new Uint8Array(frame));
+      try {
+        const decoded = decodeFrames(joined);
+        this.remainder = decoded.remainder;
+        for (const frame of decoded.frames) {
+          for (const listener of this.listeners) listener(new Uint8Array(frame));
+        }
+      } catch {
+        socket.destroy();
+        this.socket = null;
+        this.listeners.clear();
+      }
     });
   }
 
