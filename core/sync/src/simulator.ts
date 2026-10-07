@@ -40,8 +40,7 @@ export function simulateConvergence(
       const correction = updateRateController(states[i]!, { phaseErrorSeconds: errors[i]!, driftPpm: node.driftPpm, confidence: node.confidence, dtSeconds: stepSeconds }, config);
       states[i] = correction.state;
       const currentError = errors[i]!;
-      errors[i] = currentError - (correction.rate - 1) * stepSeconds;
-      errors[i] += (node.driftPpm / 1e6) * stepSeconds;
+      errors[i] = currentError - (correction.rate - 1) * stepSeconds + (node.driftPpm / 1e6) * stepSeconds;
     }
 
     const maxAbsoluteErrorSeconds = Math.max(...errors.map(Math.abs));
