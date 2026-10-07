@@ -21,7 +21,6 @@ export class NetworkEmulator implements Transport {
     private readonly random: RandomSource = Math.random,
   ) {
     this.validate(profile);
-    if (random() < 0 || random() >= 1) throw new RangeError("random source must return values in [0,1)");
     this.profile = { ...profile };
     this.unsubscribe = inner.onMessage((payload) => {
       for (const listener of this.listeners) listener(new Uint8Array(payload));
