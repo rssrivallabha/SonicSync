@@ -9,14 +9,12 @@ export interface ScheduledBuffer {
 type AudioContextConstructor = new (options?: AudioContextOptions) => AudioContext;
 
 function getAudioContextConstructor(): AudioContextConstructor | null {
-  const scope = globalThis as typeof globalThis & {
+  const scope = globalThis as unknown as {
+    readonly AudioContext?: AudioContextConstructor;
     readonly webkitAudioContext?: AudioContextConstructor;
   };
 
-  if ("AudioContext" in scope) {
-    return scope.AudioContext as AudioContextConstructor;
-  }
-  return scope.webkitAudioContext ?? null;
+  return scope.AudioContext ?? scope.webkitAudioContext ?? null;
 }
 
 export class WebAudioEngine {
