@@ -9,3 +9,5 @@ export * from "./sequencer";
 export * from "./lead";
 export * from "./phase";
 export * from "./simulator";
+export * from "./clock-model";
+export * from "./scheduler";
