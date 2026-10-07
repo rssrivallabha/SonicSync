@@ -1,4 +1,4 @@
-import { CommandMessage, MessageType, PROTOCOL_VERSION, ProtocolMessage } from "./messages.js";
+import { AuthMessage, CommandMessage, MessageType, PROTOCOL_VERSION, ProtocolMessage } from "./messages.js";
 
 export interface ValidationLimits {
   readonly maxMessageIdLength: number;
@@ -42,6 +42,13 @@ export function validateProtocolMessage(value: unknown, limits: ValidationLimits
 
   if (message.sequence !== undefined && (!Number.isSafeInteger(message.sequence) || message.sequence < 0)) return invalid("invalid sequence");
   if (message.expiry !== undefined && (typeof message.expiry !== "number" || !Number.isFinite(message.expiry) || message.expiry < message.timestamp!)) return invalid("invalid expiry");
+
+  if (message.messageType === "AUTH") {
+    const auth = message as AuthMessage;
+    if (!/^[a-f0-9]{16,128}$/.test(auth.nonce)) return invalid("invalid nonce");
+    if (!/^[a-f0-9]{64}$/.test(auth.proof)) return invalid("invalid proof");
+    return { valid: true, reason: "accepted" };
+  }
 
   if (message.messageType !== "COMMAND") return { valid: true, reason: "accepted" };
 
