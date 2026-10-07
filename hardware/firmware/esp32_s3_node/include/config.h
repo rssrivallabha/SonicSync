@@ -1,0 +1,17 @@
+#pragma once
+
+#define SONICSYNC_WIFI_SSID "CHANGE_ME"
+#define SONICSYNC_WIFI_PASSWORD "CHANGE_ME"
+
+#define SONICSYNC_UDP_PORT 47600
+#define SONICSYNC_SYNC_GPIO 4
+#define SONICSYNC_STATUS_GPIO 2
+
+#define SONICSYNC_SAMPLE_RATE 48000
+#define SONICSYNC_CHANNELS 2
+#define SONICSYNC_BUFFER_FRAMES 32768
+
+#define SONICSYNC_PACKET_MAGIC 0x5353
+#define SONICSYNC_PACKET_VERSION 1
+
+// Prototype transport only. Authentication/encryption is not implemented yet.
