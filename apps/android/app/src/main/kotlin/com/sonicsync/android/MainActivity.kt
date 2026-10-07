@@ -13,6 +13,7 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var running = false
     private lateinit var status: TextView
+    private lateinit var audioFocus: AudioFocusController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,6 +28,7 @@ class MainActivity : Activity() {
             ?.toIntOrNull()
             ?: 192
 
+        audioFocus = AudioFocusController(this)
         NativeAudio.open(sampleRate, framesPerBurst)
 
         status = TextView(this).apply {
@@ -37,8 +39,10 @@ class MainActivity : Activity() {
         val start = Button(this).apply {
             text = "Start audio stream"
             setOnClickListener {
-                NativeAudio.start()
-                running = true
+                if (audioFocus.request()) {
+                    NativeAudio.start()
+                    running = true
+                }
                 update()
             }
         }
@@ -95,6 +99,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        audioFocus.abandon()
         NativeAudio.close()
         super.onDestroy()
     }
