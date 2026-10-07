@@ -1,4 +1,5 @@
 #include <oboe/Oboe.h>
+#include <jni.h>
 #include <android/log.h>
 #include <algorithm>
 #include <atomic>
@@ -47,7 +48,7 @@ public:
                     const double envelope = 1.0 - std::min(1.0, t / 0.008);
                     sample = static_cast<float>(
                             0.8 * envelope *
-                            std::sin(2.0 * M_PI * 1000.0 * t));
+                            std::sin(2.0 * 3.14159265358979323846 * 1000.0 * t));
                     markerFired_.store(true, std::memory_order_release);
                 }
             }
@@ -131,10 +132,11 @@ public:
                 ->setDataCallback(callback_)
                 ->setErrorCallback(callback_);
 
+        builder.setSharingMode(oboe::SharingMode::Exclusive);
         oboe::Result result = builder.openStream(stream_);
 
         if (result != oboe::Result::OK) {
-            builder.setSharingMode(oboe::SharingMode::Exclusive);
+            builder.setSharingMode(oboe::SharingMode::Shared);
             result = builder.openStream(stream_);
         }
 
@@ -264,6 +266,64 @@ int ssAudioMarkerFired() {
 
 int ssAudioFailed() {
     return gEngine.failed() ? 1 : 0;
+}
+
+JNIEXPORT void JNICALL
+Java_com_sonicsync_android_NativeAudio_open(
+        JNIEnv *, jclass, jint sampleRate, jint framesPerBurst) {
+    ssAudioOpen(sampleRate, framesPerBurst);
+}
+
+JNIEXPORT void JNICALL
+Java_com_sonicsync_android_NativeAudio_start(JNIEnv *, jclass) {
+    ssAudioStart();
+}
+
+JNIEXPORT void JNICALL
+Java_com_sonicsync_android_NativeAudio_stop(JNIEnv *, jclass) {
+    ssAudioStop();
+}
+
+JNIEXPORT void JNICALL
+Java_com_sonicsync_android_NativeAudio_close(JNIEnv *, jclass) {
+    ssAudioClose();
+}
+
+JNIEXPORT void JNICALL
+Java_com_sonicsync_android_NativeAudio_schedule(
+        JNIEnv *, jclass, jlong startNanos) {
+    ssAudioSchedule(startNanos);
+}
+
+JNIEXPORT void JNICALL
+Java_com_sonicsync_android_NativeAudio_setVolume(
+        JNIEnv *, jclass, jfloat gain) {
+    ssAudioSetVolume(gain);
+}
+
+JNIEXPORT jdouble JNICALL
+Java_com_sonicsync_android_NativeAudio_latencyMillis(JNIEnv *, jclass) {
+    return ssAudioLatencyMillis();
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_sonicsync_android_NativeAudio_framesWritten(JNIEnv *, jclass) {
+    return ssAudioFramesWritten();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_sonicsync_android_NativeAudio_sampleRate(JNIEnv *, jclass) {
+    return ssAudioSampleRate();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_sonicsync_android_NativeAudio_markerFired(JNIEnv *, jclass) {
+    return ssAudioMarkerFired() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_sonicsync_android_NativeAudio_failed(JNIEnv *, jclass) {
+    return ssAudioFailed() ? JNI_TRUE : JNI_FALSE;
 }
 
 }
