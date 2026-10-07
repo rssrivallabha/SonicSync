@@ -19,7 +19,7 @@ import {
   ClockModel,
   PlaybackScheduler,
 } from "../core/sync/src";
-import { ChunkStore, sha256Hex, validateTrackMetadata } from "../core/media/src";
+import { ChunkStore, sha256Hex, validateTrackMetadata, createTransferPlan, putVerifiedChunk, transferComplete } from "../core/media/src";
 import { decodeFrames, encodeFrame, NetworkEmulator, listenTcp } from "../core/transport/src";
 
 import { validateProtocolMessage } from "../core/protocol/src";
@@ -326,6 +326,17 @@ async function main(): Promise<void> {
     unsubscribe();
     await client.close();
     await listener.close();
+  });
+
+
+  await run("media transfer plan enforces ordered chunk sizes", () => {
+    const plan = createTransferPlan(5, 2);
+    const store = new ChunkStore();
+    putVerifiedChunk(plan, store, { index: 0, bytes: new Uint8Array([1, 2]) });
+    putVerifiedChunk(plan, store, { index: 1, bytes: new Uint8Array([3, 4]) });
+    assert(!transferComplete(plan, store), "transfer should remain incomplete");
+    putVerifiedChunk(plan, store, { index: 2, bytes: new Uint8Array([5]) });
+    assert(transferComplete(plan, store), "transfer should complete");
   });
 
   console.log("ALL PHASE-1/2/3 FOUNDATION TESTS PASSED");
