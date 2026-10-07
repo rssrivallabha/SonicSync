@@ -11,6 +11,11 @@ import {
   positionRangeSeconds,
   initialSession,
   requiredReady,
+  CommandSequencer,
+  computeSyncLead,
+  createFutureSyncTarget,
+  computePhaseError,
+  simulateConvergence,
 } from "../core/sync/src";
 
 import { validateProtocolMessage } from "../core/protocol/src";
