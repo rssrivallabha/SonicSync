@@ -305,9 +305,7 @@ async function main(): Promise<void> {
 
 
   await run("LAN TCP transport exchanges framed payloads", async () => {
-    let serverTransport: import("../core/transport/src").TcpTransport | null = null;
     const listener = await listenTcp("127.0.0.1", 0, (transport) => {
-      serverTransport = transport;
       transport.onMessage((payload) => { void transport.send(payload); });
     });
 
@@ -327,7 +325,6 @@ async function main(): Promise<void> {
     assert(JSON.stringify(Array.from(received!)) === JSON.stringify([9, 8, 7]), "TCP payload");
     unsubscribe();
     await client.close();
-    if (serverTransport !== null) await serverTransport.close();
     await listener.close();
   });
 
