@@ -25,6 +25,7 @@ import { decodeFrames, encodeFrame, NetworkEmulator, listenTcp, TcpTransport } f
 import { validateProtocolMessage } from "../core/protocol/src/index.js";
 import { InMemoryTransport } from "../core/transport/src/index.js";
 import { measureMarker } from "../hardware/node/src/index.js";
+import { TokenBucket, ReplayGuard, generateDeviceIdentity, generateSessionToken, isCommandAuthorized } from "../core/security/src/index.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -342,7 +343,57 @@ async function main(): Promise<void> {
     assert(transferComplete(plan, store), "transfer should complete");
   });
 
-  console.log("ALL PHASE-1/2/3 FOUNDATION TESTS PASSED");
+
+  await run("protocol validator rejects invalid commands and oversized identifiers", () => {
+    const base = {
+      protocolVersion: 1,
+      messageType: "COMMAND",
+      messageId: "m1",
+      roomId: "room",
+      senderId: "node",
+      timelineEpoch: 1,
+      commandRevision: 1,
+      timestamp: 10,
+      effectiveAt: 20,
+      command: "PLAY",
+      positionSeconds: 2,
+    };
+    assert(!validateProtocolMessage({ ...base, command: "NOPE" }).valid, "unknown command");
+    assert(!validateProtocolMessage({ ...base, positionSeconds: -1 }).valid, "negative position");
+    assert(!validateProtocolMessage({ ...base, messageId: "x".repeat(129) }).valid, "oversized message id");
+    assert(!validateProtocolMessage({ ...base, command: "MUTE" }).valid, "missing mute payload");
+  });
+
+  await run("participant authorization permits sync request only", () => {
+    equal(isCommandAuthorized("PARTICIPANT", "SYNC"), true, "sync request");
+    equal(isCommandAuthorized("PARTICIPANT", "PLAY"), false, "participant play rejection");
+    equal(isCommandAuthorized("HOST", "PLAY"), true, "host play");
+  });
+
+  await run("replay guard rejects duplicate and regressed sequences", () => {
+    const guard = new ReplayGuard(60);
+    assert(guard.accept("node", "m1", 1, 10).accepted, "first message");
+    assert(!guard.accept("node", "m1", 1, 11).accepted, "duplicate id");
+    assert(!guard.accept("node", "m2", 0, 11).accepted, "regressed sequence");
+    assert(guard.accept("node", "m3", 2, 11).accepted, "next sequence");
+  });
+
+  await run("token bucket rate limits bursts and refills", () => {
+    const bucket = new TokenBucket(2, 1, 0);
+    equal(bucket.allow(1, 0), true, "first");
+    equal(bucket.allow(1, 0), true, "second");
+    equal(bucket.allow(1, 0), false, "burst limit");
+    equal(bucket.allow(1, 1), true, "refill");
+  });
+
+  await run("device identity and session token generation produce opaque random material", () => {
+    const device = generateDeviceIdentity();
+    const token = generateSessionToken(32);
+    assert(/^[a-f0-9]{32}$/.test(device), "device identity format");
+    assert(/^[a-f0-9]{64}$/.test(token), "session token format");
+  });
+
+  console.log("ALL PHASE-1/2/3/4 FOUNDATION TESTS PASSED");
 }
 
 main().catch((error: unknown) => { console.error(error); throw error; });
