@@ -2,14 +2,29 @@
 
 ## 2026-10-07
 
-The target GitHub repository was empty. The Phase 1 foundation was created from the production specification.
+The SonicSync repository started empty and has been bootstrapped into a strict TypeScript engineering core.
 
-### Defects exposed and fixed
-1. The first test runner required unavailable Node type declarations; it was replaced with a dependency-free executable runner.
-2. Strict TypeScript exposed unchecked indexed access; the invariant was made explicit without weakening compiler settings.
-3. Timeline application incorrectly advanced epoch/revision locally; authoritative command metadata is now adopted and stale commands are rejected.
+### Current implementation
+- sync/timeline/state-machine/clock/rate-controller/scheduler
+- versioned protocol validation
+- resumable media transfer and content hashing
+- in-memory and LAN TCP transports
+- network fault injection
+- hardware node measurement contract
+- authorization/replay/rate-limit/identity security primitives
+- CI
 
-### Validation evidence
-Local npm run validate passes with strict typecheck, build, and 8 executable regression tests.
+### CI failures found and corrected
+- obsolete Node10 module resolution
+- Node16 explicit-extension requirements
+- current TypeScript typed-array BufferSource compatibility
+- strict array indexing in the simulator
+- missing CommandMessage type import
+- extensionless dynamic transport import in tests
+- unhandled post-connect TCP error/close path
+- oversized transport frame acceptance
 
-No physical, acoustic, RF, or sub-millisecond measurement has been claimed.
+### Current proof state
+- CI run #73 passed after compatibility corrections.
+- Later commits continue through automated CI.
+- Physical/audio claims remain intentionally unproven until measurement hardware is used.
