@@ -1,4 +1,4 @@
-import { PeerAddress, Transport, TransportQuality } from "./types";
+import { PeerAddress, Transport, TransportQuality } from "./types.js";
 
 export class InMemoryTransport implements Transport {
   readonly kind = "IN_MEMORY" as const;
