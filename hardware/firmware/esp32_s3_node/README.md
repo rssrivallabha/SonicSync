@@ -6,7 +6,7 @@ Prototype target: ESP32-S3 DevKitC-1 + MAX98357A + 4 ohm / 3 W speaker.
 
 Wi-Fi UDP
 -> PCM packet buffer
--> PSRAM ring buffer
+-> PSRAM ring buffer when available, with internal-RAM fallback for the N8 board
 -> I2S
 -> MAX98357A
 -> speaker
