@@ -26,6 +26,18 @@ export class TcpTransport implements Transport {
 
   private attach(socket: Socket): void {
     this.socket = socket.setNoDelay(true);
+    socket.on("error", () => {
+      if (this.socket === socket) {
+        this.socket = null;
+        this.listeners.clear();
+      }
+    });
+    socket.on("close", () => {
+      if (this.socket === socket) {
+        this.socket = null;
+        this.listeners.clear();
+      }
+    });
     socket.on("data", (data) => {
       const joined = new Uint8Array(this.remainder.length + data.length);
       joined.set(this.remainder);
