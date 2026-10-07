@@ -136,7 +136,8 @@ std::atomic<uint32_t> receivedPackets{0};
 std::atomic<uint32_t> droppedPackets{0};
 std::atomic<uint32_t> underruns{0};
 
-int16_t dmaBuffer[1024 * SONICSYNC_CHANNELS];
+constexpr size_t AUDIO_BLOCK_FRAMES = 128;
+int16_t dmaBuffer[AUDIO_BLOCK_FRAMES * SONICSYNC_CHANNELS];
 
 void marker(bool high) {
     digitalWrite(SONICSYNC_SYNC_GPIO, high ? HIGH : LOW);
@@ -265,7 +266,7 @@ void audioTask(void *) {
             scheduledPlayback.load(std::memory_order_acquire);
 
         if (!scheduled) {
-            const size_t frames = pcmRing.pop(dmaBuffer, 512);
+            const size_t frames = pcmRing.pop(dmaBuffer, AUDIO_BLOCK_FRAMES);
 
             if (frames == 0) {
                 writeSilence();
@@ -298,7 +299,7 @@ void audioTask(void *) {
         }
 
         if (testClick.load(std::memory_order_acquire)) {
-            fillClick(dmaBuffer, 512, nowMicros);
+            fillClick(dmaBuffer, AUDIO_BLOCK_FRAMES, nowMicros);
 
             size_t written = 0;
             i2s_channel_write(
