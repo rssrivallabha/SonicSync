@@ -1,0 +1,17 @@
+name: Hardware Firmware
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  esp32:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PlatformIO
+        run: python3 -m pip install --user platformio
+      - name: Build ESP32-S3 firmware
+        working-directory: hardware/firmware/esp32_s3_node
+        run: ~/.local/bin/pio run
