@@ -1,0 +1,9 @@
+{
+  "name": "SonicSync",
+  "short_name": "SonicSync",
+  "start_url": "/apps/web/",
+  "display": "standalone",
+  "background_color": "#0b0b0c",
+  "theme_color": "#0b0b0c",
+  "icons": []
+}
