@@ -25,7 +25,7 @@ import { decodeFrames, encodeFrame, NetworkEmulator, listenTcp, TcpTransport } f
 import { validateProtocolMessage } from "../core/protocol/src/index.js";
 import { InMemoryTransport } from "../core/transport/src/index.js";
 import { measureMarker } from "../hardware/node/src/index.js";
-import { TokenBucket, ReplayGuard, generateDeviceIdentity, generateSessionToken, isCommandAuthorized, CommandGate } from "../core/security/src/index.js";
+import { TokenBucket, ReplayGuard, generateDeviceIdentity, generateSessionToken, isCommandAuthorized, CommandGate, createSessionProof, verifySessionProof } from "../core/security/src/index.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -406,6 +406,15 @@ async function main(): Promise<void> {
     let rejected = false;
     try { decodeFrames(header, 1024); } catch { rejected = true; }
     assert(rejected, "oversized frame header must fail closed");
+  });
+
+
+  await run("authenticated session proof rejects tampering", async () => {
+    const secret = "ab".repeat(16);
+    const proof = await createSessionProof(secret, "room", "node", "0123456789abcdef");
+    assert(await verifySessionProof(secret, "room", "node", "0123456789abcdef", proof), "valid proof");
+    assert(!(await verifySessionProof(secret, "room", "attacker", "0123456789abcdef", proof)), "sender binding");
+    assert(!(await verifySessionProof("cd".repeat(16), "room", "node", "0123456789abcdef", proof)), "secret binding");
   });
 
   console.log("ALL PHASE-1/2/3/4 FOUNDATION TESTS PASSED");
