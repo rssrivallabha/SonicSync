@@ -19,7 +19,7 @@ import {
   ClockModel,
   PlaybackScheduler,
 } from "../core/sync/src/index.js";
-import { ChunkStore, sha256Hex, validateTrackMetadata, createTransferPlan, putVerifiedChunk, transferComplete } from "../core/media/src/index.js";
+import { ChunkStore, sha256Hex, verifySha256Hex, validateTrackMetadata, createTransferPlan, putVerifiedChunk, transferComplete } from "../core/media/src/index.js";
 import { decodeFrames, encodeFrame, NetworkEmulator, listenTcp, TcpTransport } from "../core/transport/src/index.js";
 
 import { validateProtocolMessage } from "../core/protocol/src/index.js";
@@ -284,8 +284,11 @@ async function main(): Promise<void> {
   });
 
   await run("SHA-256 hashing is content-addressable", async () => {
-    const digest = await sha256Hex(new TextEncoder().encode("abc"));
+    const bytes = new TextEncoder().encode("abc");
+    const digest = await sha256Hex(bytes);
     equal(digest, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "sha256");
+    equal(await verifySha256Hex(bytes, digest), true, "hash verification");
+    equal(await verifySha256Hex(bytes, "0".repeat(64)), false, "wrong hash rejection");
   });
 
   await run("network emulator can run without packet loss", async () => {
@@ -309,7 +312,7 @@ async function main(): Promise<void> {
       transport.onMessage((payload) => { void transport.send(payload); });
     });
 
-    const client = new (await import("../core/transport/src")).TcpTransport();
+    const client = new TcpTransport();
     await client.connect({ peerId: "server", kind: "LAN", endpoint: `127.0.0.1:${listener.port}` });
 
     let received: Uint8Array | null = null;
