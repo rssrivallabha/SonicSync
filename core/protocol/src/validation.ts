@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, ProtocolMessage } from "./messages";
+import { PROTOCOL_VERSION, CommandMessage, ProtocolMessage } from "./messages.js";
 
 export interface ValidationResult {
   readonly valid: boolean;
