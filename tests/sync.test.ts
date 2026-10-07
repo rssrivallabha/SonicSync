@@ -18,13 +18,13 @@ import {
   simulateConvergence,
   ClockModel,
   PlaybackScheduler,
-} from "../core/sync/src";
-import { ChunkStore, sha256Hex, validateTrackMetadata, createTransferPlan, putVerifiedChunk, transferComplete } from "../core/media/src";
-import { decodeFrames, encodeFrame, NetworkEmulator, listenTcp } from "../core/transport/src";
+} from "../core/sync/src/index.js";
+import { ChunkStore, sha256Hex, validateTrackMetadata, createTransferPlan, putVerifiedChunk, transferComplete } from "../core/media/src/index.js";
+import { decodeFrames, encodeFrame, NetworkEmulator, listenTcp, TcpTransport } from "../core/transport/src/index.js";
 
-import { validateProtocolMessage } from "../core/protocol/src";
-import { InMemoryTransport } from "../core/transport/src";
-import { measureMarker } from "../hardware/node/src";
+import { validateProtocolMessage } from "../core/protocol/src/index.js";
+import { InMemoryTransport } from "../core/transport/src/index.js";
+import { measureMarker } from "../hardware/node/src/index.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
