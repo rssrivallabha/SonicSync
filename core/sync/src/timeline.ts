@@ -1,4 +1,4 @@
-import { RoomAuthority, TimelineCommand } from "./types";
+import { RoomAuthority, TimelineCommand } from "./types.js";
 
 const EPSILON = 1e-9;
 
