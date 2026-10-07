@@ -8,6 +8,7 @@ if (!root) throw new Error("app root missing");
 const clock = new ClockModel();
 const audio = new WebAudioEngine();
 const capabilities = detectBrowserAudioCapabilities();
+if (capabilities.serviceWorker) void navigator.serviceWorker.register("/apps/web/public/sw.js");
 
 root.innerHTML = `
   <main style="font-family:Inter,system-ui,sans-serif;max-width:720px;margin:40px auto;padding:24px">
