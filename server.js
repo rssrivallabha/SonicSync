@@ -14,6 +14,8 @@ import { ContentAddressedMediaStore } from "./src/core/media-store.mjs";
 import { validateControlMessage } from "./src/core/protocol.mjs";
 
 const PORT = clampInt(process.env.PORT, 8787, 1024, 65535);
+const IS_SERVERLESS = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\\/$/, "");
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const IDLE_ROOM_TTL_MS = 20 * 60 * 1000;
 const TIMELINE_PROTOCOL_VERSION = 2;
@@ -26,7 +28,14 @@ const HEARTBEAT_MS = 8_000;
 const CLIENT_DEAD_MS = 24_000;
 const CONTROL_MAX_BYTES = 128 * 1024;
 const ROOM_CODE_RE = /^[A-Z0-9]{6}$/;
-const DATA = path.join(process.cwd(), "data");
+// Persistent writable storage is supported for self-hosted single-process deployments.
+ // Serverless filesystems are ephemeral and may be read-only; default to /tmp only to
+ // allow health/static routes to boot, while health reports the non-durable mode clearly.
+const DATA = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : IS_SERVERLESS
+    ? path.join("/tmp", "sonicsync-data")
+    : path.join(process.cwd(), "data");
 const MEDIA_DIR = path.join(DATA, "media");
 const PUBLIC = path.join(process.cwd(), "public");
 const PERSIST_PATH = path.join(DATA, "rooms.json");
@@ -305,7 +314,7 @@ app.get("/api/config", (req, res) => res.json({
   lanIP: localIPv4(),
   lanIPs: localIPv4Candidates().filter(isPrivateLANAddress),
   hostname: hostName(),
-  joinBase: `http://${localIPv4()}:${PORT}`,
+  joinBase: PUBLIC_BASE_URL || `http://${localIPv4()}:${PORT}`,
   noInternetRequired: true,
   nearbyDiscovery: Boolean(bonjour),
   protocolVersion: TIMELINE_PROTOCOL_VERSION,
@@ -313,7 +322,16 @@ app.get("/api/config", (req, res) => res.json({
   browserMode: "No cloud media path. Internet is not required."
 }));
 app.get("/api/time", (req, res) => res.json({ now: now() }));
-app.get("/api/health", (req, res) => res.json({ status: "ok", version: "10.0.2", rooms: rooms.size, now: now(), discovery: Boolean(bonjour) }));
+app.get("/api/health", (req, res) => res.json({
+  status: "ok",
+  version: "10.0.3",
+  deploymentMode: IS_SERVERLESS ? "serverless-ephemeral" : "persistent-single-process",
+  storage: IS_SERVERLESS ? "ephemeral" : "configured-local",
+  durableRoomsAndMedia: !IS_SERVERLESS,
+  rooms: rooms.size,
+  now: now(),
+  discovery: Boolean(bonjour)
+}));
 
 app.get("/api/room/:room/diagnostics", (req, res) => {
   const room = roomFor(req.params.room);

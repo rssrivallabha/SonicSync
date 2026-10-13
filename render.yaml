@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: sonicsync
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: PUBLIC_BASE_URL
+        sync: false
+    # Add a persistent disk before treating uploaded media/room snapshots as durable.
+    # For production, use a paid instance with a disk mounted at /var/data.
