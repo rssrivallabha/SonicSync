@@ -1,0 +1,10 @@
+flowchart TD
+A[Schedule test click] --> B[Electrical GPIO marker]
+A --> C[Speaker output]
+C --> D[Microphone capture]
+B --> E[Instrument timestamp]
+D --> F[Acoustic arrival]
+E --> G[Compute latency/skew]
+F --> G
+G --> H[Per-device calibration offset]
+H --> I[Invalidate on route change]

@@ -1,0 +1,13 @@
+menu "SonicSync Speaker Node"
+config SONICSYNC_WIFI_SSID
+    string "Wi-Fi SSID"
+    default ""
+config SONICSYNC_WIFI_PASSWORD
+    string "Wi-Fi password"
+    default ""
+config SONICSYNC_PSK
+    string "Local control PSK"
+    default ""
+    help
+        Shared secret used to authenticate local UDP control commands.
+endmenu

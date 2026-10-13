@@ -1,0 +1,10 @@
+flowchart LR
+A[t1 client sends] --> B[t2 host receives]
+B --> C[t3 host replies]
+C --> D[t4 client receives]
+D --> E[RTT + offset]
+E --> F[Minimum RTT filter]
+F --> G[Median/MAD outlier rejection]
+G --> H[Drift regression]
+H --> I[Uncertainty + confidence]
+I --> J[Adaptive future lead]

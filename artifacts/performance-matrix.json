@@ -1,0 +1,141 @@
+{
+  "generatedAt": "2026-10-08T04:46:07.195Z",
+  "note": "Software simulation only; not an acoustic or 50 m physical measurement.",
+  "cases": [
+    {
+      "nodes": 8,
+      "latency": 20,
+      "jitter": 3,
+      "drift": 40,
+      "loss": 0.001,
+      "duration": 30,
+      "result": {
+        "nodes": 8,
+        "durationSec": 30,
+        "assumptions": {
+          "baseLatency": 20,
+          "jitter": 3,
+          "driftRangePpm": 40,
+          "loss": 0.001
+        },
+        "leadMs": 1000,
+        "softwarePhaseErrorMs": {
+          "p50": 9.11979398446583,
+          "p90": 9.816493811560356,
+          "p95": 9.907959593409398,
+          "p99": 9.981797954398964,
+          "max": 10.000348753497377
+        },
+        "note": "Simulation only. Acoustic skew and real output latency require physical measurement."
+      }
+    },
+    {
+      "nodes": 16,
+      "latency": 50,
+      "jitter": 10,
+      "drift": 80,
+      "loss": 0.01,
+      "duration": 60,
+      "result": {
+        "nodes": 16,
+        "durationSec": 60,
+        "assumptions": {
+          "baseLatency": 50,
+          "jitter": 10,
+          "driftRangePpm": 80,
+          "loss": 0.01
+        },
+        "leadMs": 1000,
+        "softwarePhaseErrorMs": {
+          "p50": 8.603028460814954,
+          "p90": 9.78910289099666,
+          "p95": 9.8925245316146,
+          "p99": 9.978603211524828,
+          "max": 10.000697506994753
+        },
+        "note": "Simulation only. Acoustic skew and real output latency require physical measurement."
+      }
+    },
+    {
+      "nodes": 32,
+      "latency": 80,
+      "jitter": 25,
+      "drift": 120,
+      "loss": 0.03,
+      "duration": 60,
+      "result": {
+        "nodes": 32,
+        "durationSec": 60,
+        "assumptions": {
+          "baseLatency": 80,
+          "jitter": 25,
+          "driftRangePpm": 120,
+          "loss": 0.03
+        },
+        "leadMs": 1223,
+        "softwarePhaseErrorMs": {
+          "p50": 9.209313763566485,
+          "p90": 10.532697889736653,
+          "p95": 10.86433288996247,
+          "p99": 11.330066347497336,
+          "max": 11.516564725845058
+        },
+        "note": "Simulation only. Acoustic skew and real output latency require physical measurement."
+      }
+    },
+    {
+      "nodes": 32,
+      "latency": 100,
+      "jitter": 35,
+      "drift": 150,
+      "loss": 0.05,
+      "duration": 60,
+      "result": {
+        "nodes": 32,
+        "durationSec": 60,
+        "assumptions": {
+          "baseLatency": 100,
+          "jitter": 35,
+          "driftRangePpm": 150,
+          "loss": 0.05
+        },
+        "leadMs": 1448,
+        "softwarePhaseErrorMs": {
+          "p50": 9.340270891978086,
+          "p90": 11.28671362440059,
+          "p95": 11.716705313283171,
+          "p99": 12.469009388922814,
+          "max": 12.777986395207108
+        },
+        "note": "Simulation only. Acoustic skew and real output latency require physical measurement."
+      }
+    },
+    {
+      "nodes": 16,
+      "latency": 150,
+      "jitter": 50,
+      "drift": 200,
+      "loss": 0.08,
+      "duration": 60,
+      "result": {
+        "nodes": 16,
+        "durationSec": 60,
+        "assumptions": {
+          "baseLatency": 150,
+          "jitter": 50,
+          "driftRangePpm": 200,
+          "loss": 0.08
+        },
+        "leadMs": 1925,
+        "softwarePhaseErrorMs": {
+          "p50": 8.923403872870495,
+          "p90": 12.205476377225466,
+          "p95": 12.817583227942464,
+          "p99": 13.555290428051592,
+          "max": 14.095455635043663
+        },
+        "note": "Simulation only. Acoustic skew and real output latency require physical measurement."
+      }
+    }
+  ]
+}

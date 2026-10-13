@@ -1,0 +1,10 @@
+flowchart TD
+A[Transport/audio failure] --> B[DEGRADED]
+B --> C[Retain safe state]
+C --> D[Reconnect]
+D --> E[Rebuild clock model]
+E --> F[Refresh media/readiness]
+F --> G[Future resync]
+G --> H{Stable?}
+H -- Yes --> I[READY/PLAYING]
+H -- No --> B

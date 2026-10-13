@@ -1,0 +1,30 @@
+{
+  "name": "sonicsync-local-audio",
+  "version": "10.0.3",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "node scripts/static-check.mjs",
+    "preflight": "node scripts/preflight.mjs",
+    "smoke": "node scripts/smoke-test.mjs",
+    "test": "node --test test/core.test.mjs test/phase-lock.test.mjs",
+    "sim": "node scripts/sync-sim.mjs",
+    "validate": "node scripts/static-check.mjs && node --test test/core.test.mjs test/phase-lock.test.mjs && node scripts/native-check.mjs && node scripts/measurement-check.mjs && node scripts/preflight.mjs",
+    "native:check": "node scripts/native-check.mjs",
+    "perf": "node scripts/performance-matrix.mjs",
+    "measurement:check": "node scripts/measurement-check.mjs"
+  },
+  "dependencies": {
+    "bonjour-service": "1.4.4",
+    "express": "5.1.0",
+    "multer": "2.0.2",
+    "qrcode": "1.5.4",
+    "ws": "8.18.3"
+  },
+  "description": "SonicSync distributed local audio platform \u2014 shared timeline, sync engine, browser pilot"
+}

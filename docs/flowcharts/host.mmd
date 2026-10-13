@@ -1,0 +1,16 @@
+flowchart TD
+A[Host opens app] --> B[Create room]
+B --> C[Generate room code + host token]
+C --> D[Advertise LAN/mDNS + QR/deep link]
+D --> E[Accept authenticated host connection]
+E --> F[Import track]
+F --> G[SHA-256 content address + cache]
+G --> H[Broadcast track offer]
+H --> I[Wait READY barrier]
+I --> J[Schedule future timeline anchor]
+J --> K[Broadcast control + direct P2P timing]
+K --> L[Monitor telemetry]
+L --> M{Phase error high?}
+M -- Yes --> N[Future sync correction]
+N --> L
+M -- No --> L

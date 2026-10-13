@@ -1,0 +1,16 @@
+flowchart TD
+A[Open join link/code] --> B[User gesture enables audio]
+B --> C[Connect control plane]
+C --> D[Authenticate/join]
+D --> E[Receive track offer]
+E --> F[Fetch + verify + decode locally]
+F --> G[Clock sampling]
+G --> H{READY?}
+H -- No --> F
+H -- Yes --> I[Wait for authoritative future anchor]
+I --> J[Schedule local audio]
+J --> K[Report phase/latency/transport telemetry]
+K --> L{Drift or mismatch?}
+L -- Yes --> M[Bounded rate correction / re-lock]
+M --> K
+L -- No --> K

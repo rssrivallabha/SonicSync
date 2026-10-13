@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090b0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SonicSync">
+<title>SonicSync — Local Distributed Audio</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/style.css?v=10.0.3">
+</head>
+<body>
+<div class="noise"></div>
+<header class="topbar">
+  <div class="brand"><span class="pulse"></span><span>SONIC<span>SYNC</span></span><small>LOCAL AUDIO ENGINE</small></div>
+  <div class="top-actions">
+    <span id="connectionBadge" class="badge bad">OFFLINE</span>
+    <button id="createRoomBtn" class="primary">CREATE ROOM</button>
+  </div>
+</header>
+
+<main>
+  <section id="landing" class="landing">
+    <div class="hero">
+      <div class="eyebrow">DISTRIBUTED REAL-TIME AUDIO</div>
+      <h1>One room.<br><em>One shared timeline.</em></h1>
+      <p>Turn phones, tablets and laptops into one synchronized speaker system — locally, with no cloud media path and no internet requirement.</p>
+      <div class="hero-actions">
+        <button id="heroCreate" class="primary big">CREATE A ROOM →</button>
+        <button id="heroJoin" class="ghost big">JOIN WITH ROOM CODE</button>
+      </div>
+      <div class="tech-strip"><span>LOCAL / OFFLINE</span><i>•</i><span>PRELOAD BARRIER</span><i>•</i><span>OUTPUT-TIMESTAMP LOCK</span><i>•</i><span>DRIFT CONTROL</span><i>•</i><span>MASTER VOLUME</span><i>•</i><span>PWA</span></div>
+    </div>
+  </section>
+
+  <section id="joinPanel" class="join-panel hidden">
+    <div class="join-inner">
+      <div class="eyebrow">JOIN A LOCAL ROOM</div>
+      <h1>Become a speaker.</h1>
+      <p>Enter the six-character room code. Your device will automatically download, decode, clock-lock and follow the host timeline.</p>
+      <input id="joinCode" maxlength="6" inputmode="latin" autocomplete="off" placeholder="ABC123">
+      <input id="deviceName" maxlength="32" autocomplete="off" placeholder="Device name (e.g. Rahul's Phone)">
+      <button id="joinBtn" class="primary big">JOIN ROOM →</button>
+      <small id="joinHelp">Join starts the local audio engine before networking. On iPhone/iPad this tap is required by WebKit before audible playback; you do not arm every song.</small>
+      <button id="backBtn" class="linkish">← Back</button>
+    </div>
+  </section>
+
+  <section id="app" class="app hidden">
+    <div class="room-head">
+      <div>
+        <div class="eyebrow">ROOM</div>
+        <div class="room-code" id="roomCode">------</div>
+        <div class="subtle" id="joinUrl">—</div>
+      </div>
+      <div class="room-actions">
+        <button id="copyBtn" class="ghost">COPY JOIN LINK</button>
+        <button id="qrBtn" class="ghost">QR</button>
+      </div>
+    </div>
+
+    <div id="hostControls" class="grid host-only">
+      <div class="main-card">
+        <div class="section-title"><span>01</span> AUDIO SOURCE</div>
+        <div class="drop" id="drop">
+          <input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac,.flac,.webm">
+          <div class="drop-icon">↥</div>
+          <strong id="fileTitle">Drop an audio file here</strong>
+          <span>MP3 / WAV / M4A / OGG / AAC / FLAC / WebM</span>
+        </div>
+        <div class="track" id="trackInfo">
+          <div class="cover">♫</div>
+          <div class="track-text"><strong id="trackName">No track loaded</strong><span id="trackMeta">Waiting for host</span></div>
+          <div class="track-state" id="trackState">IDLE</div>
+        </div>
+
+        <div class="transport">
+          <button id="startBtn" class="primary transport-btn" disabled>PLAY WHEN ALL READY</button>
+          <button id="pauseBtn" class="ghost" disabled>PAUSE</button>
+          <button id="resumeBtn" class="ghost" disabled>RESUME</button>
+          <button id="stopBtn" class="ghost" disabled>STOP / HOLD</button>
+          <button id="resetBtn" class="ghost" disabled>RESET 00:00</button>
+          <button id="prevBtn" class="ghost" disabled>PREVIOUS</button>
+          <button id="nextBtn" class="ghost" disabled>NEXT</button>
+          <button id="syncAllBtn" class="ghost" disabled>SYNC ALL NODES</button>
+        </div>
+        <div class="hint-line" id="readyBarrier">Waiting for track and speaker readiness.</div>
+        <div class="host-tools"><button id="lockBtn" class="ghost">LOCK ROOM</button><span class="tool-note">Lock prevents new joins while the party is live.</span></div>
+
+        <div class="timeline">
+          <div class="time"><span id="pos">00:00</span><span id="dur">00:00</span></div>
+          <input id="seek" type="range" min="0" max="1000" value="0" step="1">
+        </div>
+      </div>
+
+      <aside class="side-card">
+        <div class="section-title"><span>02</span> MASTER OUTPUT</div>
+        <div class="volume-row"><span>MASTER VOLUME</span><strong id="volumeValue">100%</strong></div>
+        <div class="volume-control"><button id="muteBtn" class="square">MUTE</button><input id="masterVolume" type="range" min="0" max="100" value="100" step="1"></div>
+        <div class="big-stat"><strong id="deviceCount">0</strong><span>DEVICES</span></div>
+        <div class="metric"><span>READY</span><strong id="readyCount">0 / 0</strong></div>
+        <div class="metric"><span>MAX SYNC RANGE</span><strong id="syncRange">—</strong></div>
+        <div class="metric"><span>AVG RTT</span><strong id="avgRtt">—</strong></div>
+        <div class="metric"><span>START LEAD</span><strong id="startLead">3.0s</strong></div>
+        <div class="metric"><span>SYNC QUALITY</span><strong id="syncQuality">PREPARING</strong></div>
+        <div class="metric"><span>CONTROL PATH</span><strong id="controlHealth">—</strong></div>
+        <div class="metric"><span>CLOCK UNCERTAINTY</span><strong id="clockUncertainty">—</strong></div>
+        <div class="metric"><span>QUEUE</span><strong id="queueCount">0</strong></div>
+        <button id="exportDiagnosticsBtn" class="ghost square-wide">EXPORT DIAGNOSTICS</button>
+        <div class="status-line"><span class="dot"></span><span id="healthText">Waiting for devices</span></div>
+        <div class="queue-panel">
+          <div class="section-title"><span>02A</span> QUEUE</div>
+          <div class="queue-controls"><button id="shuffleBtn" class="ghost">SHUFFLE OFF</button><button id="repeatBtn" class="ghost">REPEAT OFF</button></div>
+          <div id="queueList" class="queue-list"></div>
+        </div>
+      </aside>
+    </div>
+
+    <section class="devices-card">
+      <div class="section-title"><span>03</span> SYNCHRONIZATION MATRIX <span class="live">LIVE</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>DEVICE</th><th>ROLE</th><th>CLOCK MODEL</th><th>AUDIO ERROR</th><th>OUT LATENCY</th><th>TRIM</th><th>RTT</th><th>BUFFER</th><th>STATE</th><th>ACTION</th></tr></thead>
+          <tbody id="devices"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="console-card">
+      <div class="section-title"><span>04</span> ENGINE TELEMETRY</div>
+      <div class="telemetry-grid">
+        <div><span>SYNC TARGET</span><strong id="targetTime">—</strong></div>
+        <div><span>CLOCK OFFSET</span><strong id="localOffset">—</strong></div>
+        <div><span>CLOCK DRIFT</span><strong id="clockDrift">—</strong></div>
+        <div><span>EST. SOFTWARE ERROR</span><strong id="playbackError">—</strong></div>
+        <div><span>CLOCK UNCERTAINTY</span><strong id="telemetryUncertainty">—</strong></div>
+        <div><span>AUDIO OUTPUT LATENCY</span><strong id="outputLatency">—</strong></div>
+        <div><span>TRANSPORT</span><strong id="network">LAN / WS</strong></div>
+        <div><span>AUDIO ENGINE</span><strong id="audioState">—</strong></div>
+        <div><span>WAKE LOCK</span><strong id="wakeState">—</strong></div>
+      </div>
+      <pre id="log">SonicSync v10 • booting local distributed audio engine…</pre>
+    </section>
+
+    <section id="speakerPanel" class="speaker-card hidden">
+      <div class="speaker-orbit"></div>
+      <div class="eyebrow">SPEAKER NODE</div>
+      <h2 id="speakerTitle">Preparing…</h2>
+      <p id="speakerStatus">Joining room and preparing the shared track.</p>
+      <div class="speaker-track"><div class="mini-disc">♫</div><div><strong>NOW PLAYING</strong><span id="speakerNowPlaying">NO TRACK</span></div></div>
+      <div class="speaker-stats"><span id="speakerSync">SYNC —</span><span id="speakerLatency">OUT —</span><span id="speakerVolume">VOL 100%</span><span id="trimLabel">LOCAL TRIM 0ms</span></div>
+      <div class="speaker-actions"><button id="syncNowBtn" class="primary big" disabled>SYNC TO HOST</button><button id="enableAudioBtn" class="ghost big hidden">ENABLE SPEAKER AUDIO</button></div>
+      <div class="hint-line" id="speakerReadyNote">Joining room…</div>
+      <div class="ios-diagnostics"><span id="iosAudioGate">AUDIO GATE —</span><span id="iosEngine">ENGINE —</span><span id="iosRTC">DIRECT LINK —</span></div>
+      <div class="speaker-trim"><button id="trimLess" class="ghost">−10ms</button><button id="trimReset" class="ghost">RESET</button><button id="trimMore" class="ghost">+10ms</button></div>
+      <div class="hint-line">STOP / HOLD preserves the exact position; RESET 00:00 is the only command that resets the track. Direct P2P sync is used when available, with a LAN/WebSocket fallback.</div>
+    </section>
+  </section>
+</main>
+
+<audio id="compatAudio" class="compat-audio" playsinline webkit-playsinline preload="auto"></audio>
+
+<div id="joinModal" class="modal hidden">
+  <div class="modal-box">
+    <button class="close" id="closeModal">×</button>
+    <div class="eyebrow">JOIN SONICSYNC</div>
+    <h2 id="modalRoom">ROOM ------</h2>
+    <img id="qr" alt="Join QR">
+    <p>Scan this QR on the same LAN or hotspot. No internet is needed. The room code identifies the room; the native Nearby build can remove the network setup entirely.</p>
+    <button id="modalCopy" class="primary">COPY JOIN LINK</button>
+  </div>
+</div>
+
+<script src="/app.js?v=10.0.3"></script>
+</body>
+</html>

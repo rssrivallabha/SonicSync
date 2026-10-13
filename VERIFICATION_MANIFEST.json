@@ -1,0 +1,50 @@
+{
+  "project": "SonicSync",
+  "version": "10.0.2",
+  "track": "continuation",
+  "date": "2026-10-08",
+  "runtime": {
+    "node": "v22.16.0"
+  },
+  "commands": {
+    "npm_install": {
+      "status": "blocked",
+      "reason": "npm registry unreachable; offline diagnostic ENOTCACHED"
+    },
+    "npm_run_validate": {
+      "status": "pass",
+      "static": 43,
+      "core": 13,
+      "native_hardware": 21,
+      "measurement_deliverables": 8
+    },
+    "npm_run_smoke": {
+      "status": "blocked",
+      "reason": "missing ws because npm install is blocked"
+    },
+    "npm_start": {
+      "status": "blocked",
+      "reason": "missing express because npm install is blocked"
+    },
+    "npm_run_perf": {
+      "status": "pass"
+    },
+    "desktop_local_transport_e2e": {
+      "status": "pass",
+      "message": "PING delivered after multicast discovery and TCP connect"
+    }
+  },
+  "platforms": {
+    "android": "source+core-compile verified; target SDK/device open",
+    "ios": "source+package verified; Xcode/device open",
+    "desktop": "Linux CMake verified; target OS runtime open",
+    "hardware": "source verified; ESP-IDF/physical build open"
+  },
+  "physical_measurements": "not executed",
+  "claims": "No sub-ms acoustic synchronization claim is made.",
+  "hotfix": {
+    "audio_gate_barrier": "fixed",
+    "resume_anchor": "fixed",
+    "phase_pll": "bounded_continuous"
+  }
+}

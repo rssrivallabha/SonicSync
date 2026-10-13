@@ -1,0 +1,9 @@
+flowchart TD
+A[Host creates room] --> B[Room code + QR]
+B --> C[Participant scans/enters code]
+C --> D[LAN WebSocket join]
+D --> E[Host token only for host role]
+E --> F[Identity assigned]
+F --> G[Snapshot + track offer]
+G --> H[Automatic prepare]
+H --> I[READY barrier]

@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(sonicsync_audio)
+add_library(sonicsync_audio SHARED sonicsync_audio.cpp)
+find_package(oboe REQUIRED CONFIG)
+target_link_libraries(sonicsync_audio oboe::oboe android log)
+target_compile_features(sonicsync_audio PRIVATE cxx_std_17)

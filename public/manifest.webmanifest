@@ -1,0 +1,9 @@
+{
+  "name": "SonicSync Local Audio",
+  "short_name": "SonicSync",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090d",
+  "theme_color": "#090b0f",
+  "description": "Local synchronized multi-device audio playback."
+}

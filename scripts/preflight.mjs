@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+const required=['package.json','server.js','public/index.html','public/app.js','public/style.css','public/sw.js'];
+const missing=required.filter(p=>!fs.existsSync(path.join(process.cwd(),p)));
+if(process.versions.node.split('.')[0] < 18) throw new Error(`Node 18+ required; found ${process.version}`);
+if(missing.length) throw new Error(`Missing required files: ${missing.join(', ')}`);
+const ifaces=os.networkInterfaces(); const ips=[]; for(const arr of Object.values(ifaces)) for(const n of arr||[]) if(n.family==='IPv4'&&!n.internal) ips.push(n.address);
+console.log(`SonicSync v10 preflight OK • Node ${process.version}`);
+console.log(`LAN IPv4: ${ips.join(', ')||'none detected'}`);
+console.log('Use a trusted private LAN/hotspot. Browser mode never requires Internet.');

@@ -1,0 +1,11 @@
+flowchart LR
+A[Wi-Fi/BLE] --> B[MCU/SoC]
+B --> C[Decoder/DSP]
+C --> D[DAC/Codec]
+D --> E[Class-D Amp]
+E --> F[Speaker]
+B --> G[GPIO timestamp]
+F --> H[Acoustic measurement]
+G --> I[Oscilloscope/Logic Analyzer]
+H --> J[Calibration dataset]
+I --> J

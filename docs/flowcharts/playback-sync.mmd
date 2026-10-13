@@ -1,0 +1,12 @@
+flowchart TD
+A[Authoritative timeline] --> B[effectiveAt + position + epoch]
+B --> C[Node converts room time to local audio time]
+C --> D[Schedule buffer/source]
+D --> E[Observe local playhead]
+E --> F[Phase error]
+F --> G{Within deadband?}
+G -- Yes --> E
+G -- No small --> H[Bounded playback-rate correction]
+H --> E
+G -- No large --> I[Schedule future re-lock]
+I --> E
