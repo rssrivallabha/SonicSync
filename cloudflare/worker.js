@@ -721,7 +721,7 @@ export class RoomCoordinator {
       room.position = this.position(room, room.stopAt); room.startPosition = room.position; room.startedAt = null; room.stopAt = null; room.state = "stopped";
       this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "stopped", revision: room.revision, timelineEpoch: room.timelineEpoch, position: room.position }); this.broadcastSnapshot(room);
       await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
-    } else if (room.pendingSeek && now >= room.pendingSeek.effectiveAt {
+    } else if (room.pendingSeek && now >= room.pendingSeek.effectiveAt) {
       const p = room.pendingSeek.position, at = room.pendingSeek.effectiveAt;
       room.startPosition = p; room.startedAt = at; room.position = p; room.pendingSeek = null;
       this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "seekCommit", revision: room.revision, timelineEpoch: room.timelineEpoch, startedAt: at, position: p }); this.broadcastSnapshot(room);
