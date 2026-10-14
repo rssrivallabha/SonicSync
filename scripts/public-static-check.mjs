@@ -4,6 +4,7 @@ const worker = fs.readFileSync(new URL("../cloudflare/worker.js", import.meta.ur
 const wrangler = fs.readFileSync(new URL("../cloudflare/wrangler.jsonc", import.meta.url), "utf8");
 const app = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
+const expectedPublicRegex = "if (!/" + String.fromCharCode(92) + ".(mp3|wav)$/i.test(file.name))";
 const checks = [
   ["health route", worker.includes('path === "/api/health"')],
   ["public backend mode", worker.includes('backendMode: "public"')],
@@ -22,7 +23,7 @@ const checks = [
   ["shared adaptive lead core", worker.includes("coreAdaptiveLeadMs") && worker.includes("../src/core/clock.mjs")],
   ["public asset security headers", worker.includes("content-security-policy") && worker.includes("x-content-type-options")],
   ["local multipart upload preserved", app.includes('api("/api/upload"') && server.includes('app.post("/api/upload"')],
-  ["public upload accepts MP3/WAV", app.includes('if (!/\\.(mp3|wav)$/i.test(file.name))') && worker.includes('return ext === "mp3" || ext === "wav";')],
+  ["public upload accepts MP3/WAV", app.includes(expectedPublicRegex) && worker.includes('return ext === "mp3" || ext === "wav";')],
   ["local backend mode marked", server.includes('backendMode: "local"')],
   ["hosted URL helper used", server.includes("joinBase: publicBaseUrl(req)")]
 ];

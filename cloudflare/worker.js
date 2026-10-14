@@ -1,6 +1,5 @@
 import QRCode from "qrcode";
 import { adaptiveLeadMs as coreAdaptiveLeadMs } from "../src/core/clock.mjs";
-import { adaptiveLeadMs as coreAdaptiveLeadMs } from "../src/core/clock.mjs";
 
 const PROTOCOL_VERSION = 2;
 const MAX_CONTROL_BYTES = 128 * 1024;
