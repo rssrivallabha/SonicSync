@@ -107,6 +107,12 @@ let child;
 let host;
 let speaker;
 let result = "not completed";
+let stage = "initializing";
+const watchdog = setTimeout(() => {
+  console.error("FAIL public Worker smoke watchdog at stage: " + stage);
+  try { child?.kill("SIGKILL"); } catch {}
+  process.exit(1);
+}, 90_000);
 try {
   const executable = process.platform === "win32" ? "npm.cmd" : "npm";
   child = spawn(executable, [
@@ -116,9 +122,11 @@ try {
   collect(child.stdout, output.stdout);
   collect(child.stderr, output.stderr);
 
+  stage = "health";
   const health = await waitUntilHealthy(child);
   console.log("PASS local Worker starts and reports public mode:", health.version);
 
+  stage = "create room";
   const created = await jsonRequest("/api/room", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   assert.equal(created.response.status, 201, JSON.stringify(created.body));
   const { id: room, hostToken } = created.body;
@@ -126,22 +134,28 @@ try {
   assert.match(hostToken, /^[a-f0-9]{64}$/);
   console.log("PASS room creation and host token");
 
+  stage = "open host websocket";
   host = openSocket(room);
   await host.opened;
   host.send({ type: "join", room, role: "host", name: "CI Host", hostToken });
+  stage = "host welcome";
   const hostWelcome = await host.waitFor("welcome");
   assert.equal(hostWelcome.role, "host");
 
+  stage = "open speaker websocket";
   speaker = openSocket(room);
   await speaker.opened;
   speaker.send({ type: "join", room, role: "client", name: "CI Speaker" });
+  stage = "speaker welcome";
   const speakerWelcome = await speaker.waitFor("welcome");
   assert.equal(speakerWelcome.role, "client");
   console.log("PASS host + participant WebSocket join");
 
+  stage = "read wav fixture";
   const fixture = await readFile(new URL("../test/fixtures/smoke.wav", import.meta.url));
   const sha256 = createHash("sha256").update(fixture).digest("hex");
   const headers = { ...hostHeaders(room, hostToken), "Content-Type": "application/json" };
+  stage = "upload begin";
   const begin = await jsonRequest("/api/public-upload/" + room + "/begin", {
     method: "POST",
     headers,
@@ -159,6 +173,7 @@ try {
     });
     assert.equal(uploaded.status, 204, "Chunk " + index + " upload failed: " + uploaded.status + " " + await uploaded.text());
   }
+  stage = "upload complete";
   const complete = await jsonRequest("/api/public-upload/" + room + "/" + begin.body.uploadId + "/complete", {
     method: "POST",
     headers: hostHeaders(room, hostToken)
@@ -166,13 +181,15 @@ try {
   assert.equal(complete.response.status, 201, JSON.stringify(complete.body));
   assert.equal(complete.body.sha256, sha256);
 
+  stage = "track offers";
   const hostOffer = await host.waitFor("trackOffer", m => m.track?.sha256 === sha256);
   const speakerOffer = await speaker.waitFor("trackOffer", m => m.track?.sha256 === sha256);
   assert.equal(hostOffer.track.token, begin.body.uploadId);
   assert.equal(speakerOffer.track.id, sha256);
   console.log("PASS chunked WAV upload, digest verification, and track broadcast");
 
-  const ranged = await fetch(BASE + complete.body.url, { headers: { Range: "bytes=0-15" } });
+  stage = "range media";
+  const ranged = await fetch(BASE + complete.body.url, { headers: { Range: "bytes=0-15" }, signal: AbortSignal.timeout(8000) });
   assert.equal(ranged.status, 206);
   assert.equal(ranged.headers.get("content-range"), "bytes 0-15/" + fixture.byteLength);
   const firstBytes = new Uint8Array(await ranged.arrayBuffer());
@@ -185,8 +202,10 @@ try {
   };
   host.send(ready);
   speaker.send({ ...ready, audioEnabled: false });
+  stage = "ready acknowledgements";
   await Promise.all([host.waitFor("readyAck"), speaker.waitFor("readyAck")]);
   host.send({ type: "start", leadMs: 2000 });
+  stage = "scheduled start";
   const [hostSchedule, speakerSchedule] = await Promise.all([
     host.waitFor("schedule"), speaker.waitFor("schedule")
   ]);
@@ -194,17 +213,21 @@ try {
   assert.ok(hostSchedule.effectiveAt > Date.now());
   console.log("PASS one future timeline anchor starts even with participant audio gate pending");
 
+  stage = "playing transition";
   await Promise.all([host.waitFor("playing", () => true, 12_000), speaker.waitFor("playing", () => true, 12_000)]);
+  stage = "pause transition";
   host.send({ type: "pause" });
   await host.waitFor("pauseScheduled");
   await Promise.all([host.waitFor("paused", () => true, 8000), speaker.waitFor("paused", () => true, 8000)]);
   const pausedSnapshot = await jsonRequest("/api/room/" + room + "/diagnostics", { headers: { "X-SonicSync-Host": hostToken } });
   assert.notEqual(pausedSnapshot.response.status, 403);
+  stage = "resume transition";
   host.send({ type: "resume" });
   const [hostResume, speakerResume] = await Promise.all([host.waitFor("schedule"), speaker.waitFor("schedule")]);
   assert.ok(hostResume.position > 0, "Resume anchor incorrectly reset to zero.");
   assert.equal(hostResume.effectiveAt, speakerResume.effectiveAt);
   console.log("PASS scheduled play, pause, and resume from retained position");
+  stage = "complete";
   result = "PASS public Worker smoke";
   console.log(result);
 } catch (error) {
@@ -213,6 +236,7 @@ try {
   console.error("Wrangler stderr:\n" + output.stderr.join(""));
   process.exitCode = 1;
 } finally {
+  clearTimeout(watchdog);
   try { host?.close(); } catch {}
   try { speaker?.close(); } catch {}
   if (child && child.exitCode === null) {
