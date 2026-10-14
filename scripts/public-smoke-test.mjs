@@ -156,9 +156,55 @@ try {
   assert.equal(speakerWelcome.role, "client");
   console.log("PASS host + participant WebSocket join");
 
+  stage = "host authorization";
+  const unauthWs = openSocket(room);
+  await unauthWs.opened;
+  unauthWs.send({ type: "join", room, role: "host", name: "Unauthorized Host", hostToken: "0".repeat(64) });
+  const authError = await unauthWs.waitFor("error");
+  assert.match(authError.message, /Host authorization failed/);
+  unauthWs.close();
+  const unauthorizedUpload = await jsonRequest("/api/public-upload/" + room + "/begin", {
+    method: "POST",
+    headers: { ...hostHeaders(room, "0".repeat(64)), "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "public-smoke.wav", mime: "audio/wav", bytes: 1, sha256: "0".repeat(64) })
+  });
+  assert.equal(unauthorizedUpload.response.status, 403);
+  const invalidType = await jsonRequest("/api/public-upload/" + room + "/begin", {
+    method: "POST",
+    headers: { ...hostHeaders(room, hostToken), "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "not-audio.txt", mime: "text/plain", bytes: 1, sha256: "0".repeat(64) })
+  });
+  assert.equal(invalidType.response.status, 415);
+  console.log("PASS invalid host token and file type rejected");
+
   stage = "read wav fixture";
   const fixture = await readFile(new URL("../test/fixtures/smoke.wav", import.meta.url));
   const sha256 = createHash("sha256").update(fixture).digest("hex");
+  stage = "reject corrupt media";
+  const badBegin = await jsonRequest("/api/public-upload/" + room + "/begin", {
+    method: "POST",
+    headers: { ...hostHeaders(room, hostToken), "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "tampered.wav", mime: "audio/wav", bytes: fixture.byteLength, sha256 })
+  });
+  assert.equal(badBegin.response.status, 201, JSON.stringify(badBegin.body));
+  const corrupted = new Uint8Array(fixture);
+  corrupted[0] ^= 0xff;
+  const badChunk = await fetch(BASE + "/api/public-upload/" + room + "/" + badBegin.body.uploadId + "/0", {
+    method: "PUT",
+    headers: { ...hostHeaders(room, hostToken), "Content-Type": "application/octet-stream" },
+    body: corrupted,
+    signal: AbortSignal.timeout(10_000)
+  });
+  assert.equal(badChunk.status, 204);
+  const rejectedComplete = await jsonRequest("/api/public-upload/" + room + "/" + badBegin.body.uploadId + "/complete", {
+    method: "POST",
+    headers: hostHeaders(room, hostToken)
+  });
+  assert.equal(rejectedComplete.response.status, 422, JSON.stringify(rejectedComplete.body));
+  const emptyRoom = await jsonRequest("/api/room/" + room + "/diagnostics", { headers: hostHeaders(room, hostToken) });
+  assert.equal(emptyRoom.response.status, 200);
+  assert.equal(emptyRoom.body.room.track, null, "Corrupted media must not become the room track.");
+  console.log("PASS corrupted upload rejected before track commit");
   const headers = { ...hostHeaders(room, hostToken), "Content-Type": "application/json" };
   stage = "upload begin";
   const begin = await jsonRequest("/api/public-upload/" + room + "/begin", {
@@ -178,6 +224,13 @@ try {
     });
     assert.equal(uploaded.status, 204, "Chunk " + index + " upload failed: " + uploaded.status + " " + await uploaded.text());
   }
+  const duplicateChunk = await fetch(BASE + "/api/public-upload/" + room + "/" + begin.body.uploadId + "/0", {
+    method: "PUT",
+    headers: { ...hostHeaders(room, hostToken), "Content-Type": "application/octet-stream" },
+    body: fixture,
+    signal: AbortSignal.timeout(10_000)
+  });
+  assert.equal(duplicateChunk.status, 204, "Retried identical chunk should be idempotent.");
   stage = "upload complete";
   const complete = await jsonRequest("/api/public-upload/" + room + "/" + begin.body.uploadId + "/complete", {
     method: "POST",
@@ -199,6 +252,17 @@ try {
   assert.equal(ranged.headers.get("content-range"), "bytes 0-15/" + fixture.byteLength);
   const firstBytes = new Uint8Array(await ranged.arrayBuffer());
   assert.deepEqual(firstBytes, new Uint8Array(fixture.subarray(0, 16)));
+  const fullMedia = await fetch(BASE + complete.body.url, { signal: AbortSignal.timeout(8000) });
+  assert.equal(fullMedia.status, 200);
+  const fullBytes = new Uint8Array(await fullMedia.arrayBuffer());
+  assert.equal(fullBytes.byteLength, fixture.byteLength);
+  assert.equal(createHash("sha256").update(fullBytes).digest("hex"), sha256, "Fetched media digest must equal uploaded digest.");
+  const headMedia = await fetch(BASE + complete.body.url, { method: "HEAD", signal: AbortSignal.timeout(8000) });
+  assert.equal(headMedia.status, 200);
+  assert.equal(Number(headMedia.headers.get("content-length")), fixture.byteLength);
+  const invalidRange = await fetch(BASE + complete.body.url, { headers: { Range: "bytes=" + fixture.byteLength + "-" }, signal: AbortSignal.timeout(8000) });
+  assert.equal(invalidRange.status, 416);
+  console.log("PASS full media digest, HEAD and unsatisfiable Range handling");
   console.log("PASS HTTP Range media response");
 
   const ready = {
@@ -220,6 +284,12 @@ try {
 
   stage = "playing transition";
   await Promise.all([host.waitFor("playing", () => true, 12_000), speaker.waitFor("playing", () => true, 12_000)]);
+  stage = "late audio activation catch-up";
+  speaker.send({ ...ready, audioEnabled: true });
+  await speaker.waitFor("readyAck");
+  const catchup = await speaker.waitFor("syncNow", m => m.reason === "ready-while-playing");
+  assert.ok(catchup.effectiveAt > Date.now(), "Late activation should schedule catch-up on a future timeline anchor.");
+  console.log("PASS audio-gated speaker catches up after local activation");
   stage = "pause transition";
   host.send({ type: "pause" });
   await host.waitFor("pauseScheduled");
