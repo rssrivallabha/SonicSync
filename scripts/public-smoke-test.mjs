@@ -337,6 +337,24 @@ try {
   assert.ok(hostResume.position > 0, "Resume anchor incorrectly reset to zero.");
   assert.equal(hostResume.effectiveAt, speakerResume.effectiveAt);
   console.log("PASS scheduled play, pause, and resume from retained position");
+
+  stage = "active room close";
+  await Promise.all([
+    host.waitFor("playing", () => true, 12_000),
+    speaker.waitFor("playing", () => true, 12_000)
+  ]);
+  const roomClosedMessage = speaker.waitFor("roomClosed", () => true, 5000);
+  const closeActive = await fetch(BASE + "/api/room/" + room, {
+    method: "DELETE",
+    headers: hostHeaders(room, hostToken),
+    signal: AbortSignal.timeout(8000)
+  });
+  assert.equal(closeActive.status, 204, await closeActive.text());
+  const closed = await roomClosedMessage;
+  assert.match(closed.message || "", /closed/i);
+  cleanupRooms = cleanupRooms.filter(item => item.id !== room);
+  console.log("PASS host can end an active room and connected speakers receive roomClosed");
+
   stage = "complete";
   result = "PASS public Worker smoke";
   console.log(result);

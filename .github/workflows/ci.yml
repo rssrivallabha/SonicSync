@@ -19,6 +19,7 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npm run validate
+      - run: timeout 90s npm run smoke
       - run: npm run public:check
       - run: timeout 120s npm run public:smoke
       - run: npm run sim -- --nodes 32 --duration 60 --latency 80 --jitter 25 --drift 120 --loss 0.03
