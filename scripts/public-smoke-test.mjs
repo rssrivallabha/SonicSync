@@ -109,6 +109,7 @@ function hostHeaders(room, hostToken) {
 let child;
 let host;
 let speaker;
+let cleanupRooms = [];
 let result = "not completed";
 let stage = "initializing";
 const watchdog = setTimeout(() => {
@@ -135,7 +136,7 @@ try {
   const created = await jsonRequest("/api/room", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   assert.equal(created.response.status, 201, JSON.stringify(created.body));
   const { id: room, hostToken } = created.body;
-  const cleanupRooms = [{ id: room, token: hostToken }];
+  cleanupRooms = [{ id: room, token: hostToken }];
   assert.match(room, /^[A-Z0-9]{6}$/);
   assert.match(hostToken, /^[a-f0-9]{64}$/);
 
@@ -348,7 +349,7 @@ try {
   clearTimeout(watchdog);
   try { host?.close(); } catch {}
   try { speaker?.close(); } catch {}
-  for (const reservation of (typeof cleanupRooms === "undefined" ? [] : cleanupRooms).reverse()) {
+  for (const reservation of cleanupRooms.reverse()) {
     try {
       await fetch(BASE + "/api/room/" + reservation.id, {
         method: "DELETE",

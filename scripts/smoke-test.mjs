@@ -94,5 +94,18 @@ if(range.status!==206) throw new Error(`Range request failed: ${range.status}`);
 const suffix=await fetch(`http://127.0.0.1:${PORT}${track.url}`, {headers:{Range:'bytes=-10'}});
 if(suffix.status!==206) throw new Error(`Suffix range request failed: ${suffix.status}`);
 
+const badClose = await fetch(`http://127.0.0.1:${PORT}/api/room/${roomInfo.id}`, {
+  method: 'DELETE', headers: { 'X-SonicSync-Host': '0'.repeat(64) }
+});
+if (badClose.status !== 403) throw new Error(`Unauthorised room close should return 403, got ${badClose.status}`);
+const closedEvent = client.next('roomClosed', 5000);
+const closeRoom = await fetch(`http://127.0.0.1:${PORT}/api/room/${roomInfo.id}`, {
+  method: 'DELETE', headers: { 'X-SonicSync-Host': roomInfo.hostToken }
+});
+if (closeRoom.status !== 204) throw new Error(`Host close failed: ${closeRoom.status} ${await closeRoom.text()}`);
+const closedMessage = await closedEvent;
+if (closedMessage.type !== 'roomClosed') throw new Error('Room close event was not delivered to speakers.');
+
 host.ws.close(); client.ws.close(); gateClient.ws.close(); cleanup();
-console.log('SMOKE PASS • room join • upload • readiness • start • pause/resume position • stop-hold • reset • volume • HTTP ranges');
+console.log('SMOKE PASS • room join • upload • readiness • start • pause/resume position • stop-hold • reset • volume • HTTP ranges • authenticated room close');
+
