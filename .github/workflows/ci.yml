@@ -6,6 +6,7 @@ on:
 
 jobs:
   validate:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,5 +16,5 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run validate
       - run: npm run public:check
-      - run: npm run public:smoke
+      - run: timeout 120s npm run public:smoke
       - run: npm run sim -- --nodes 32 --duration 60 --latency 80 --jitter 25 --drift 120 --loss 0.03
