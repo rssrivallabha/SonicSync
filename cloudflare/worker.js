@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { adaptiveLeadMs as coreAdaptiveLeadMs } from "../src/core/clock.mjs";
 
 const PROTOCOL_VERSION = 2;
 const MAX_CONTROL_BYTES = 128 * 1024;
@@ -112,7 +113,13 @@ export default {
       return roomStub(env, room).fetch(forwardedRequest(request, "/_internal/ws?room=" + room));
     }
     if (path.startsWith("/api/") || path.startsWith("/media/")) return json({ error: "Route not found." }, 404);
-    return env.ASSETS.fetch(request);
+    const asset = await env.ASSETS.fetch(request);
+    const headers = new Headers(asset.headers);
+    headers.set("x-content-type-options", "nosniff");
+    headers.set("referrer-policy", "no-referrer");
+    headers.set("permissions-policy", "autoplay=(self), camera=(), microphone=(), geolocation=()");
+    headers.set("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:");
+    return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers: headers });
   }
 };
 
@@ -247,8 +254,15 @@ export class RoomCoordinator {
     const rtts = items.map(c => Number(c.a.info.rttMs) || 0).filter(n => n > 0);
     const jitters = items.map(c => Number(c.a.info.clockJitterMs) || 0).filter(n => n > 0);
     const uncertainty = items.map(c => Number(c.a.info.clockUncertaintyMs) || 0).filter(n => n > 0);
-    const estimate = (rtts.length ? Math.max(...rtts) * 1.5 : 30) + (jitters.length ? Math.max(...jitters) * 3 : 15) + (uncertainty.length ? Math.max(...uncertainty) * 2 : 6) + 150;
-    return Math.max(floor, Math.min(ceiling, estimate));
+    const confidence = items.length ? items.reduce((sum, c) => sum + (Number(c.a.info.syncConfidence) || 0.8), 0) / items.length : 1;
+    return coreAdaptiveLeadMs({
+      rttMs: rtts.length ? Math.max(...rtts) : 20,
+      jitterMs: jitters.length ? Math.max(...jitters) : 5,
+      uncertaintyMs: uncertainty.length ? Math.max(...uncertainty) : 3,
+      reliability: Math.max(0.35, confidence),
+      floor: floor,
+      ceiling: ceiling
+    });
   }
   async openSocket() {
     if (!this.requireRoom()) return new Response("Room not found or expired.", { status: 404 });
@@ -505,16 +519,20 @@ export class RoomCoordinator {
     if (room.state === "armed" && room.startAt != null && now >= room.startAt) {
       room.startedAt = room.startAt; room.startAt = null; room.state = "playing"; this.bump(room); this.saveRoom(room);
       this.broadcast(room, { type: "playing", revision: room.revision, timelineEpoch: room.timelineEpoch }); this.broadcastSnapshot(room);
+      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
     } else if (room.state === "pausing" && room.pauseAt != null && now >= room.pauseAt) {
       room.position = room.pausePosition; room.startPosition = room.position; room.startedAt = null; room.pauseAt = null; room.pausePosition = null; room.state = "paused";
       this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "paused", revision: room.revision, timelineEpoch: room.timelineEpoch, position: room.position }); this.broadcastSnapshot(room);
+      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
     } else if (room.state === "stopping" && room.stopAt != null && now >= room.stopAt) {
       room.position = this.position(room, room.stopAt); room.startPosition = room.position; room.startedAt = null; room.stopAt = null; room.state = "stopped";
       this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "stopped", revision: room.revision, timelineEpoch: room.timelineEpoch, position: room.position }); this.broadcastSnapshot(room);
+      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
     } else if (room.pendingSeek && now >= room.pendingSeek.effectiveAt) {
       const p = room.pendingSeek.position, at = room.pendingSeek.effectiveAt;
       room.startPosition = p; room.startedAt = at; room.position = p; room.pendingSeek = null;
       this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "seekCommit", revision: room.revision, timelineEpoch: room.timelineEpoch, startedAt: at, position: p }); this.broadcastSnapshot(room);
+      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
     }
     const sessions = this.sql.exec("SELECT id, created_at FROM upload_sessions").toArray();
     for (const item of sessions) if (now - item.created_at > 10 * 60 * 1000) {

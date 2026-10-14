@@ -318,12 +318,13 @@ function publishDiscovery(room) {
 function hostAuthorized(room, m) { return m?.hostToken && m.hostToken === room.hostToken; }
 
 app.get("/api/config", (req, res) => res.json({
-  version: "10.0.2",
+  version: "10.0.3",
+  backendMode: "local",
   port: PORT,
   lanIP: localIPv4(),
   lanIPs: localIPv4Candidates().filter(isPrivateLANAddress),
   hostname: hostName(),
-  joinBase: PUBLIC_BASE_URL || `http://${localIPv4()}:${PORT}`,
+  joinBase: publicBaseUrl(req),
   noInternetRequired: true,
   nearbyDiscovery: Boolean(bonjour),
   protocolVersion: TIMELINE_PROTOCOL_VERSION,

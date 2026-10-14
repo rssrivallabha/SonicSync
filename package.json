@@ -20,7 +20,7 @@
     "measurement:check": "node scripts/measurement-check.mjs",
     "public:dev": "npm exec -- wrangler --config cloudflare/wrangler.jsonc dev",
     "public:deploy": "npm exec -- wrangler --config cloudflare/wrangler.jsonc deploy",
-    "public:check": "node --check cloudflare/worker.js && node scripts/public-static-check.mjs"
+    "public:check": "node --check cloudflare/worker.js && node scripts/public-static-check.mjs && npm exec -- wrangler --config cloudflare/wrangler.jsonc deploy --dry-run"
   },
   "dependencies": {
     "bonjour-service": "1.4.4",
@@ -29,5 +29,8 @@
     "qrcode": "1.5.4",
     "ws": "8.18.3"
   },
-  "description": "SonicSync distributed local audio platform — shared timeline, sync engine, browser pilot"
+  "description": "SonicSync distributed local audio platform — shared timeline, sync engine, browser pilot",
+  "devDependencies": {
+    "wrangler": "^4.150.0"
+  }
 }
