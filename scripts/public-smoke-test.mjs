@@ -92,8 +92,11 @@ function openSocket(room) {
     close() { try { ws.close(1000, "Smoke test complete"); } catch {} }
   };
 }
-async function jsonRequest(path, init) {
-  const response = await fetch(BASE + path, init);
+async function jsonRequest(path, init = {}) {
+  const response = await fetch(BASE + path, {
+    ...init,
+    signal: init.signal || AbortSignal.timeout(10_000)
+  });
   const text = await response.text();
   let body = {};
   try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
@@ -110,6 +113,8 @@ let result = "not completed";
 let stage = "initializing";
 const watchdog = setTimeout(() => {
   console.error("FAIL public Worker smoke watchdog at stage: " + stage);
+  console.error("Wrangler stdout:\\n" + output.stdout.join(""));
+  console.error("Wrangler stderr:\\n" + output.stderr.join(""));
   try { child?.kill("SIGKILL"); } catch {}
   process.exit(1);
 }, 90_000);
