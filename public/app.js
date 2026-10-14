@@ -591,7 +591,7 @@ function render(snapshot) {
   // Room playback readiness is MEDIA + CLOCK readiness. Browser/OS audio activation is a local output gate.
   // The host's Play/Resume gesture is the explicit activation opportunity for the host; remote nodes may
   // remain audio-gated and catch up automatically after their own required activation gesture.
-  const startable = isHost() && snapshot.track && snapshot.state === "ready" && snapshot.ready.prepared >= snapshot.ready.total && snapshot.ready.clockReady >= snapshot.ready.total;
+  const startable = isHost() && snapshot.track && snapshot.state === "ready" && snapshot.ready.total > 0 && snapshot.ready.prepared >= snapshot.ready.total && snapshot.ready.clockLocked >= snapshot.ready.total;
   $("#startBtn").disabled = !startable;
   $("#startBtn").textContent = !state.audioEnabled ? "PLAY • ENABLE HOST AUDIO" : "PLAY WHEN READY";
   $("#pauseBtn").disabled = !isHost() || snapshot.state !== "playing";

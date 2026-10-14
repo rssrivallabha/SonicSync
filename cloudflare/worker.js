@@ -368,7 +368,15 @@ export class RoomCoordinator {
       a.info.clockLocked = Boolean(m.clockLocked); a.info.clockSampleCount = Math.max(0, Math.min(1000, Math.floor(Number(m.clockSampleCount) || 0)));
       a.info.audioReady = Boolean(m.audioReady); a.info.audioEnabled = Boolean(m.audioEnabled);
       a.info.status = ["connected","preparing","ready","clock-sync","audio-gesture","scheduled","playing","paused","stopped","error","syncing"].includes(m.status) ? m.status : "connected";
-      a.info.transport = String(m.transport || "Public WS").slice(0, 24); this.writeAttachment(ws, a); return;
+      a.info.transport = String(m.transport || "Public WS").slice(0, 24);
+      this.writeAttachment(ws, a);
+      const observedAt = Date.now();
+      if (observedAt - Number(room.lastSnapshotAt || 0) >= 500) {
+        room.lastSnapshotAt = observedAt;
+        this.saveRoom(room);
+        this.broadcastSnapshot(room);
+      }
+      return;
     }
     if (m.type === "ready") {
       if (!room.track || m.trackId !== room.track.id) return;
@@ -400,7 +408,7 @@ export class RoomCoordinator {
     if (m.type === "start") {
       if (!room.track) return this.send(ws, { type: "error", message: "Load a track first." });
       const summary = this.readySummary(room, this.clients(room));
-      if (!summary.total || summary.prepared < summary.total || summary.clockReady < summary.total) return this.send(ws, { type: "error", message: "Playback locked until every connected device has decoded the track and clock-synced." });
+      if (!summary.total || summary.prepared < summary.total || summary.clockLocked < summary.total) return this.send(ws, { type: "error", message: "Playback locked until every connected device has decoded the track and clock-synced." });
       if (!a.info.audioEnabled) return this.send(ws, { type: "error", message: "Enable host audio with a tap first." });
       const lead = Math.max(2000, Math.min(10000, Number(m.leadMs) || this.adaptiveLead(room, this.clients(room))));
       room.syncLeadMs = lead; room.position = 0; room.startPosition = 0; room.startAt = Date.now() + lead;
@@ -418,7 +426,7 @@ export class RoomCoordinator {
     if (m.type === "resume") {
       if (!room.track || !["paused","stopped"].includes(room.state)) return;
       const summary = this.readySummary(room, this.clients(room));
-      if (summary.prepared < summary.total || summary.clockReady < summary.total) return this.send(ws, { type: "error", message: "Resume locked until connected nodes have decoded the track and clock-synced." });
+      if (!summary.total || summary.prepared < summary.total || summary.clockLocked < summary.total) return this.send(ws, { type: "error", message: "Resume locked until connected nodes have decoded the track and clock-synced." });
       const lead = Math.max(1200, Math.min(9000, Number(m.leadMs) || this.adaptiveLead(room, this.clients(room), 2200, 6500)));
       room.startPosition = Math.max(0, Number(room.position) || 0); room.startAt = Date.now() + lead; room.syncLeadMs = lead;
       room.startedAt = null; room.pauseAt = room.stopAt = null; room.pendingSeek = null; room.state = "armed";
@@ -509,181 +517,6 @@ export class RoomCoordinator {
     }
   }
   async webSocketClose(ws) {
-    const a = this.attachment(ws);
-    if (!a) return;
-    const room = this.readRoom();
-    if (!room) return;
-    const items = this.clients(room);
-    if (room.hostId === a.id && !a.replaced) {
-      room.hostId = null; room.position = this.position(room); room.startPosition = room.position;
-      const active = ["playing","pausing","stopping","armed"].includes(room.state);
-      if (active) room.state = room.track ? "stopped" : "idle";
-      room.startAt = room.startedAt = room.pauseAt = room.stopAt = null; room.pendingSeek = null;
-      this.bump(room); this.saveRoom(room);
-      this.broadcast(room, { type: "hostGone", revision: room.revision, position: room.position });
-      if (active) this.broadcast(room, { type: "stopped", revision: room.revision, timelineEpoch: room.timelineEpoch, position: room.position });
-    } else if (room.hostId) {
-      const host = items.find(c => c.a.id === room.hostId);
-      if (host) this.send(host.ws, { type: "rtcPeerLeft", peerId: a.id });
-    }
-    this.broadcastSnapshot(room);
-  }
-  async webSocketError(ws) { await this.webSocketClose(ws); }
-  async alarm() {
-    const room = this.readRoom(), now = Date.now();
-    if (!room) {
-      this.sql.exec("DELETE FROM room_create_rate WHERE created_at < ?", now - 3600000);
-      this.sql.exec("DELETE FROM room_join_rate WHERE created_at < ?", now - 60000);
-      return;
-    }
-    if (now - room.createdAt >= ROOM_TTL_MS) {
-      this.sql.exec("DELETE FROM room_state WHERE id = 1"); this.sql.exec("DELETE FROM upload_sessions"); this.sql.exec("DELETE FROM media_chunks");
-      for (const ws of this.ctx.getWebSockets()) try { ws.close(1001, "Room expired"); } catch {}
-      return;
-    }
-    if (room.state === "armed" && room.startAt != null && now >= room.startAt) {
-      room.startedAt = room.startAt; room.startAt = null; room.state = "playing"; this.bump(room); this.saveRoom(room);
-      this.broadcast(room, { type: "playing", revision: room.revision, timelineEpoch: room.timelineEpoch }); this.broadcastSnapshot(room);
-      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
-    } else if (room.state === "pausing" && room.pauseAt != null && now >= room.pauseAt) {
-      room.position = room.pausePosition; room.startPosition = room.position; room.startedAt = null; room.pauseAt = null; room.pausePosition = null; room.state = "paused";
-      this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "paused", revision: room.revision, timelineEpoch: room.timelineEpoch, position: room.position }); this.broadcastSnapshot(room);
-      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
-    } else if (room.state === "stopping" && room.stopAt != null && now >= room.stopAt) {
-      room.position = this.position(room, room.stopAt); room.startPosition = room.position; room.startedAt = null; room.stopAt = null; room.state = "stopped";
-      this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "stopped", revision: room.revision, timelineEpoch: room.timelineEpoch, position: room.position }); this.broadcastSnapshot(room);
-      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
-    } else if (room.pendingSeek && now >= room.pendingSeek.effectiveAt) {
-      const p = room.pendingSeek.position, at = room.pendingSeek.effectiveAt;
-      room.startPosition = p; room.startedAt = at; room.position = p; room.pendingSeek = null;
-      this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "seekCommit", revision: room.revision, timelineEpoch: room.timelineEpoch, startedAt: at, position: p }); this.broadcastSnapshot(room);
-      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
-    }
-    const sessions = this.sql.exec("SELECT id, created_at FROM upload_sessions").toArray();
-    for (const item of sessions) if (now - item.created_at > 10 * 60 * 1000) {
-      this.sql.exec("DELETE FROM upload_sessions WHERE id = ?", item.id);
-      this.sql.exec("DELETE FROM media_chunks WHERE upload_id = ?", item.id);
-    }
-    await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 10 * 60 * 1000));
-  }
-  async beginUpload(request) {
-    const room = this.requireRoom();
-    if (!room || !this.hostMatches(room, request)) return json({ error: "Invalid room or host authorization." }, 403);
-    const body = await request.json().catch(() => null);
-    if (!body || !allowedMedia(body.name)) return json({ error: "Only MP3 and WAV uploads are supported in the public beta." }, 415);
-    const bytes = Number(body.bytes), sha256 = String(body.sha256 || "").toLowerCase();
-    if (!Number.isSafeInteger(bytes) || bytes < 1 || bytes > MAX_TRACK_BYTES) return json({ error: "Track must be 1 byte to 25 MiB." }, 413);
-    if (!/^[a-f0-9]{64}$/.test(sha256)) return json({ error: "Invalid SHA-256 digest." }, 400);
-    const now = Date.now();
-    room.trackUploads = (room.trackUploads || []).filter(t => now - t < 3600000);
-    if (room.trackUploads.length >= MAX_UPLOADS_PER_HOUR) return json({ error: "Room upload quota reached for this hour." }, 429);
-    const uploadId = randomHex(24);
-    const meta = { name: safeName(body.name), mime: canonicalMime(body.name), bytes: bytes, sha256: sha256, chunkSize: CHUNK_BYTES, chunkCount: Math.ceil(bytes / CHUNK_BYTES) };
-    this.sql.exec("INSERT INTO upload_sessions (id, payload, created_at) VALUES (?, ?, ?)", uploadId, JSON.stringify(meta), now);
-    await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
-    return json({ uploadId: uploadId, chunkSize: CHUNK_BYTES, chunkCount: meta.chunkCount, maxBytes: MAX_TRACK_BYTES }, 201);
-  }
-  async putChunk(request, uploadId, index) {
-    const room = this.requireRoom();
-    if (!room || !this.hostMatches(room, request)) return json({ error: "Invalid room or host authorization." }, 403);
-    const row = this.sql.exec("SELECT payload FROM upload_sessions WHERE id = ?", uploadId).toArray()[0];
-    if (!row) return json({ error: "Upload session expired. Start the upload again." }, 404);
-    const meta = JSON.parse(row.payload);
-    if (!Number.isInteger(index) || index < 0 || index >= meta.chunkCount) return json({ error: "Invalid chunk index." }, 400);
-    const bytes = new Uint8Array(await request.arrayBuffer());
-    const expected = index === meta.chunkCount - 1 ? meta.bytes - index * meta.chunkSize : meta.chunkSize;
-    if (bytes.byteLength !== expected) return json({ error: "Invalid chunk size." }, 400);
-    const previous = this.sql.exec("SELECT body FROM media_chunks WHERE upload_id = ? AND chunk_index = ?", uploadId, index).toArray()[0];
-    if (previous) {
-      const old = previous.body instanceof Uint8Array ? previous.body : new Uint8Array(previous.body);
-      if (old.byteLength === bytes.byteLength && old.every((value, i) => value === bytes[i])) return new Response(null, { status: 204 });
-      return json({ error: "Conflicting payload already exists at this chunk index." }, 409);
-    }
-    this.sql.exec("INSERT INTO media_chunks (upload_id, chunk_index, body) VALUES (?, ?, ?)", uploadId, index, bytes);
-    return new Response(null, { status: 204 });
-  }
-  async completeUpload(request, uploadId) {
-    const room = this.requireRoom();
-    if (!room || !this.hostMatches(room, request)) return json({ error: "Invalid room or host authorization." }, 403);
-    const session = this.sql.exec("SELECT payload FROM upload_sessions WHERE id = ?", uploadId).toArray()[0];
-    if (!session) return json({ error: "Upload session expired." }, 404);
-    const meta = JSON.parse(session.payload);
-    const chunks = this.sql.exec("SELECT chunk_index, body FROM media_chunks WHERE upload_id = ? ORDER BY chunk_index", uploadId).toArray();
-    if (chunks.length !== meta.chunkCount) return json({ error: "Upload incomplete: received " + chunks.length + "/" + meta.chunkCount + " chunks." }, 409);
-    const joined = new Uint8Array(meta.bytes); let offset = 0;
-    for (let i = 0; i < chunks.length; i++) {
-      if (Number(chunks[i].chunk_index) !== i) return json({ error: "Upload has a missing chunk." }, 409);
-      const chunk = chunks[i].body instanceof Uint8Array ? chunks[i].body : new Uint8Array(chunks[i].body);
-      joined.set(chunk, offset); offset += chunk.byteLength;
-    }
-    if (offset !== meta.bytes) return json({ error: "Uploaded byte count mismatch." }, 400);
-    const digestBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", joined));
-    const digest = Array.from(digestBytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
-    if (digest !== meta.sha256) {
-      this.sql.exec("DELETE FROM upload_sessions WHERE id = ?", uploadId); this.sql.exec("DELETE FROM media_chunks WHERE upload_id = ?", uploadId);
-      return json({ error: "SHA-256 verification failed. Upload was rejected." }, 422);
-    }
-    const track = { id: digest, url: "/media/" + room.id + "/" + uploadId, token: uploadId, name: meta.name, mime: meta.mime, bytes: meta.bytes, sha256: digest, durationSec: null };
-    const duplicate = (room.queue || []).find(t => t.sha256 === digest);
-    if (duplicate) track.durationSec = duplicate.durationSec || null;
-    room.queue = Array.isArray(room.queue) ? room.queue : [];
-    room.queue.push(track); room.queueIndex = room.queue.length - 1; room.track = track; room.trackGeneration++;
-    room.state = "ready"; room.position = room.startPosition = 0; room.startAt = room.startedAt = room.pauseAt = room.stopAt = null;
-    room.pausePosition = room.stopPosition = null; room.pendingSeek = null; room.trackUploads.push(Date.now());
-    this.sql.exec("DELETE FROM upload_sessions WHERE id = ?", uploadId);
-    this.bump(room, true); this.saveRoom(room);
-    for (const peer of this.clients(room)) {
-      peer.a.readyTrackId = null; peer.a.info.audioReady = false; peer.a.info.audioEnabled = false;
-      peer.a.info.clockLocked = false; peer.a.info.clockSampleCount = 0; peer.a.info.bufferSec = 0; peer.a.info.syncErrorMs = 0; peer.a.info.status = "preparing";
-      this.writeAttachment(peer.ws, peer.a);
-    }
-    this.broadcast(room, { type: "trackOffer", revision: room.revision, timelineEpoch: room.timelineEpoch, trackGeneration: room.trackGeneration, track: track });
-    this.broadcastSnapshot(room);
-    return json(track, 201);
-  }
-  async serveMedia(request, token) {
-    const room = this.requireRoom();
-    if (!room) return new Response(null, { status: 404 });
-    const track = (room.queue || []).find(t => t.token === token);
-    if (!track) return new Response(null, { status: 404 });
-    const size = Number(track.bytes) || 0, range = request.headers.get("range");
-    let start = 0, end = size - 1, status = 200;
-    if (range) {
-      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-      if (!match) return new Response(null, { status: 416, headers: { "Content-Range": "bytes */" + size } });
-      if (!match[1]) {
-        const suffix = Number(match[2] || 0);
-        if (!Number.isSafeInteger(suffix) || suffix < 1) return new Response(null, { status: 416, headers: { "Content-Range": "bytes */" + size } });
-        start = Math.max(0, size - suffix); end = size - 1;
-      } else { start = Number(match[1]); end = match[2] ? Number(match[2]) : size - 1; }
-      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) return new Response(null, { status: 416, headers: { "Content-Range": "bytes */" + size } });
-      end = Math.min(end, size - 1); status = 206;
-    }
-    const first = Math.floor(start / CHUNK_BYTES), last = Math.floor(end / CHUNK_BYTES);
-    const rows = this.sql.exec("SELECT chunk_index, body FROM media_chunks WHERE upload_id = ? AND chunk_index >= ? AND chunk_index <= ? ORDER BY chunk_index", token, first, last).toArray();
-    const total = end - start + 1, body = new Uint8Array(total); let written = 0;
-    for (const row of rows) {
-      const idx = Number(row.chunk_index), chunk = row.body instanceof Uint8Array ? row.body : new Uint8Array(row.body);
-      const globalStart = idx * CHUNK_BYTES, from = Math.max(start - globalStart, 0), to = Math.min(end - globalStart + 1, chunk.byteLength);
-      if (to > from) { body.set(chunk.subarray(from, to), written); written += to - from; }
-    }
-    if (written !== total) return json({ error: "Media is incomplete or expired." }, 503);
-    const headers = { "content-type": track.mime || "application/octet-stream", "accept-ranges": "bytes", "cache-control": "private, max-age=600", "content-length": String(total) };
-    if (status === 206) headers["content-range"] = "bytes " + start + "-" + end + "/" + size;
-    return request.method === "HEAD" ? new Response(null, { status: status, headers: headers }) : new Response(body, { status: status, headers: headers });
-  }
-  async diagnostics(request) {
-    const room = this.requireRoom();
-    if (!room || !this.hostMatches(room, request)) return json({ error: "Invalid host authorization." }, 403);
-    const payload = { exportedAt: Date.now(), protocolVersion: PROTOCOL_VERSION, room: this.snapshot(room), limitations: ["Software telemetry is not acoustic measurement.", "Output and acoustic latency require physical instrumentation."] };
-    if (new URL(request.url).searchParams.get("format") === "csv") {
-      const cols = ["id","name","role","transport","rttMs","clockJitterMs","clockUncertaintyMs","clockDriftPpm","syncErrorMs","outputLatencyMs","trimMs","bufferSec","syncConfidence","status"];
-      const csv = [cols.join(","), ...payload.room.devices.map(d => cols.map(k => JSON.stringify(d[k] ?? "")).join(","))].join("\n");
-      return new Response(csv, { headers: { "content-type": "text/csv", "content-disposition": "attachment; filename=sonicsync-" + room.id + "-diagnostics.csv", "cache-control": "no-store" } });
-    }
-    return json(payload, 200, { "content-disposition": "attachment; filename=sonicsync-" + room.id + "-diagnostics.json" });
-  }
-  async webSocketClose(ws) {
     const a = this.attachment(ws); if (!a) return;
     const room = this.readRoom(); if (!room) return;
     const items = this.clients(room);
@@ -703,7 +536,7 @@ export class RoomCoordinator {
   async webSocketError(ws) { await this.webSocketClose(ws); }
   async alarm() {
     const room = this.readRoom(), now = Date.now();
-    if (!room) { this.sql.exec("DELETE FROM room_create_rate WHERE created_at < ?", now - 3600000); return; }
+    if (!room) { this.sql.exec("DELETE FROM room_create_rate WHERE created_at < ?", now - 3600000); this.sql.exec("DELETE FROM room_join_rate WHERE created_at < ?", now - 60000); return; }
     if (now - room.createdAt >= ROOM_TTL_MS) {
       this.sql.exec("DELETE FROM room_state WHERE id = 1"); this.sql.exec("DELETE FROM upload_sessions"); this.sql.exec("DELETE FROM media_chunks");
       for (const ws of this.ctx.getWebSockets()) try { ws.close(1001, "Room expired"); } catch {}

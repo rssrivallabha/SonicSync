@@ -735,8 +735,8 @@ wss.on("connection", ws => {
 
     if (m.type === "start") {
       if (!room.track) return send(client, { type: "error", message: "Load a track first." });
-      const { prepared, enabled, clockReady, total } = roomReadySummary(room);
-      if (!total || prepared < total || clockReady < total) return send(client, { type: "error", message: `Playback locked: ${prepared}/${total} decoded, ${clockReady}/${total} clock-locked. Speaker audio gates may remain pending and will catch up after local activation.` });
+      const { prepared, clockLocked, total } = roomReadySummary(room);
+      if (!total || prepared < total || clockLocked < total) return send(client, { type: "error", message: `Playback locked: ${prepared}/${total} decoded, ${clockLocked}/${total} clocks locked. Speaker audio gates may remain pending and will catch up after local activation.` });
       if (!isWsOpen(client.ws) || !client.info.audioEnabled) return send(client, { type: "error", message: "Host speaker is not enabled." });
       const lead = finiteClamp(m.leadMs, adaptiveLeadMs(room, null, 2800, 7000), 2000, 10_000);
       room.syncLeadMs = lead;
@@ -766,8 +766,8 @@ wss.on("connection", ws => {
 
     if (m.type === "resume") {
       if (!room.track || !["paused", "stopped"].includes(room.state)) return;
-      const { prepared, enabled, clockReady, total } = roomReadySummary(room);
-      if (prepared < total || clockReady < total) return send(client, { type: "error", message: `Resume locked: ${prepared}/${total} decoded, ${clockReady}/${total} clock-locked. Speaker audio gates may remain pending and will catch up after local activation.` });
+      const { prepared, clockLocked, total } = roomReadySummary(room);
+      if (!total || prepared < total || clockLocked < total) return send(client, { type: "error", message: `Resume locked: ${prepared}/${total} decoded, ${clockLocked}/${total} clocks locked. Speaker audio gates may remain pending and will catch up after local activation.` });
       const lead = finiteClamp(m.leadMs, adaptiveLeadMs(room, null, 2200, 6500), 1200, 9000);
       room.startPosition = Math.max(0, finite(room.position, 0));
       room.startAt = now() + lead;

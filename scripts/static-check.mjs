@@ -41,7 +41,7 @@ const checks = [
  ['auto-sync throttle', /lastAutoSyncRequestAt/.test(js) && /1400/.test(js), 'auto drift can flood sync requests'],
  ['continuous phase PLL', /phase-lock\.mjs/.test(js) && /updatePhaseLock/.test(js) && /lastRateCorrectionPpm/.test(js), 'continuous phase controller missing'],
  ['bounded hard re-anchor threshold', /Math\.abs\(error\) > 80/.test(js) && /Math\.abs\(phaseError\) <= 80/.test(js), 'phase controller threshold is inconsistent'],
- ['audio gate not room barrier', /prepared < total \|\| clockReady < total/.test(server) && !/prepared < total \|\| enabled < total \|\| clockReady < total/.test(server), 'participant audio gate still blocks host start'],['host UI start uses media+clock readiness', /snapshot.ready.prepared >= snapshot.ready.total/.test(js) && /snapshot.ready.clockReady >= snapshot.ready.total/.test(js) && /PLAY • ENABLE HOST AUDIO/.test(js), 'host UI still uses audio-enabled count as room start barrier'],
+  ['audio gate not room barrier', /prepared < total \|\| clockLocked < total/.test(server) && !/prepared < total \|\| enabled < total/.test(server), 'participant audio gate still blocks host start'],['host UI start uses media+locked clock', /snapshot.ready.prepared >= snapshot.ready.total/.test(js) && /snapshot.ready.clockLocked >= snapshot.ready.total/.test(js) && /PLAY • ENABLE HOST AUDIO/.test(js), 'host UI does not use clock lock as readiness barrier'],
 
  ['sync retry attempt persistence', /attempts/.test(js) && /verify-retry/.test(js) && /const attempt = \+\+state\.pendingAudioCommand\.attempts/.test(js) && /attempt \}/.test(js), 'sync retry loop not bounded'],
  ['rtc timer cleanup', /clearInterval\(p\.statsTimer\)/.test(js) && /clearTimeout\(p\.reconnectTimer\)/.test(js), 'RTC timers can leak']
