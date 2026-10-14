@@ -60,8 +60,16 @@ function openSocket(room) {
   return {
     ws,
     opened: new Promise((resolve, reject) => {
-      ws.once("open", resolve);
-      ws.once("error", reject);
+      const timer = setTimeout(() => {
+        try { ws.terminate(); } catch {}
+        reject(new Error("Timed out opening public room WebSocket. Check the Worker upgrade route and Durable Object socket handoff."));
+      }, 8000);
+      ws.once("open", () => { clearTimeout(timer); resolve(); });
+      ws.once("error", error => { clearTimeout(timer); reject(error); });
+      ws.once("close", (code, reason) => {
+        clearTimeout(timer);
+        reject(new Error("WebSocket closed before opening (" + code + "): " + reason.toString()));
+      });
     }),
     send(message) {
       if (ws.readyState !== WebSocket.OPEN) throw new Error("WebSocket is not open.");
