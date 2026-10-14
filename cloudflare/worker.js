@@ -4,7 +4,8 @@ import { adaptiveLeadMs as coreAdaptiveLeadMs } from "../src/core/clock.mjs";
 const PROTOCOL_VERSION = 2;
 const MAX_CONTROL_BYTES = 128 * 1024;
 const MAX_ROOMS_PER_HOUR = 5;
-const MAX_CLIENTS = 8;
+const MAX_CLIENTS = 6;
+const MAX_ACTIVE_ROOMS = 2;
 const MAX_ROOM_MEDIA_BYTES = 100 * 1024 * 1024;
 const MAX_TRACK_BYTES = 25 * 1024 * 1024;
 const CHUNK_BYTES = 1024 * 1024;
@@ -54,10 +55,10 @@ export default {
       freeTierGuardrails: true, physicalSyncVerified: false
     });
     if (request.method === "GET" && path === "/api/config") return json({
-      version: "10.1.0-public-beta", backendMode: "public", publicRooms: true,
+      version: "10.1.0-public-beta", backendMode: "public", publicRooms: true, maxRoomDevices: MAX_CLIENTS, maxActiveRooms: MAX_ACTIVE_ROOMS, roomTtlMs: ROOM_TTL_MS,
       joinBase: originOf(request), hostname: "SonicSync Public", noInternetRequired: false,
       nearbyDiscovery: false, protocolVersion: PROTOCOL_VERSION, uploadMaxBytes: MAX_TRACK_BYTES,
-      uploadChunkBytes: CHUNK_BYTES,
+      uploadChunkBytes: CHUNK_BYTES, clockSyncIntervalMs: 3000, telemetryIntervalMs: 10000,
       transport: "Public HTTPS + room WebSocket coordination + direct WebRTC where available; media is fetched and decoded locally.",
       browserMode: "Public rooms require Internet for coordination. Use the Node server for nearby/offline mode."
     });
@@ -71,17 +72,33 @@ export default {
       });
       if (!limited.ok) return limited;
       for (let attempt = 0; attempt < 4; attempt++) {
-        const id = randomRoomCode();
-        const hostToken = randomHex(32);
+        const id = randomRoomCode(), hostToken = randomHex(32);
+        const reserved = await limiter.fetch("https://sonicsync-room.internal/_internal/rooms/reserve", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id, expiresAt: Date.now() + ROOM_TTL_MS })
+        });
+        if (reserved.status === 409) continue;
+        if (!reserved.ok) return reserved;
         const created = await roomStub(env, id).fetch("https://sonicsync-room.internal/_internal/create", {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ id, hostToken, now: Date.now() })
         });
-        if (created.status === 409) continue;
-        if (!created.ok) return json({ error: "Could not create the room. Please retry." }, 503);
+        if (created.status === 409) {
+          await limiter.fetch("https://sonicsync-room.internal/_internal/rooms/release", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
+          continue;
+        }
+        if (!created.ok) {
+          await limiter.fetch("https://sonicsync-room.internal/_internal/rooms/release", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
+          return json({ error: "Could not create the room. Please retry." }, 503);
+        }
         return json({ id, hostToken, joinBase: originOf(request), hostname: "SonicSync Public", discoveryService: null }, 201);
       }
       return json({ error: "Could not allocate a unique room code. Please retry." }, 503);
+    }
+
+    const closeRoomMatch = path.match(/^\/api\/room\/([A-Z0-9]{6})$/i);
+    if (request.method === "DELETE" && closeRoomMatch) {
+      return roomStub(env, closeRoomMatch[1]).fetch(forwardedRequest(request, "/_internal/delete"));
     }
 
     const qr = path.match(/^\/api\/qr\/([A-Z0-9]{6})$/i);
@@ -143,12 +160,16 @@ export class RoomCoordinator {
       this.sql.exec("CREATE INDEX IF NOT EXISTS room_create_rate_time ON room_create_rate(created_at)");
       this.sql.exec("CREATE TABLE IF NOT EXISTS room_join_rate (client_ip TEXT NOT NULL, created_at INTEGER NOT NULL)");
       this.sql.exec("CREATE INDEX IF NOT EXISTS room_join_rate_time ON room_join_rate(created_at)");
+      this.sql.exec("CREATE TABLE IF NOT EXISTS active_public_rooms (room_id TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)");
+      this.sql.exec("CREATE INDEX IF NOT EXISTS active_public_rooms_expiry ON active_public_rooms(expires_at)");
     });
   }
   async fetch(request) {
     const url = new URL(request.url), path = url.pathname;
     if (path === "/_internal/rate/room" && request.method === "POST") return this.rateRoomCreate(request);
     if (path === "/_internal/rate/join" && request.method === "POST") return this.rateJoin(request);
+    if (path === "/_internal/rooms/reserve" && request.method === "POST") return this.reserveRoom(request);
+    if (path === "/_internal/rooms/release" && request.method === "POST") return this.releaseRoom(request);
     if (path === "/_internal/create" && request.method === "POST") return this.createRoom(request);
     if (path === "/_internal/exists" && request.method === "GET") return this.readRoom() ? new Response("ok") : new Response("not found", { status: 404 });
     if (path === "/_internal/diagnostics" && request.method === "GET") return this.diagnostics(request);
@@ -176,6 +197,26 @@ export class RoomCoordinator {
     const count = Number(this.sql.exec("SELECT COUNT(*) AS n FROM room_join_rate WHERE client_ip = ?", ip).toArray()[0]?.n || 0);
     if (count >= 60) return json({ error: "Too many join attempts from this network. Try again in a minute." }, 429);
     this.sql.exec("INSERT INTO room_join_rate (client_ip, created_at) VALUES (?, ?)", ip, now);
+    return new Response(null, { status: 204 });
+  }
+  async reserveRoom(request) {
+    const body = await request.json().catch(() => null);
+    const id = String(body?.id || "").toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(id)) return json({ error: "Invalid room reservation." }, 400);
+    const now = Date.now();
+    this.sql.exec("DELETE FROM active_public_rooms WHERE expires_at <= ?", now);
+    if (this.sql.exec("SELECT 1 AS present FROM active_public_rooms WHERE room_id = ?", id).toArray()[0]) return json({ error: "Room code collision." }, 409);
+    const activeCount = Number(this.sql.exec("SELECT COUNT(*) AS n FROM active_public_rooms").toArray()[0]?.n || 0);
+    if (activeCount >= MAX_ACTIVE_ROOMS) return json({ error: "The public beta is at capacity (two active rooms). Join an existing room or try again after one closes." }, 429);
+    const expiresAt = Math.max(now + 60000, Math.min(now + ROOM_TTL_MS, Number(body.expiresAt) || now + ROOM_TTL_MS));
+    this.sql.exec("INSERT INTO active_public_rooms (room_id, expires_at) VALUES (?, ?)", id, expiresAt);
+    return new Response(null, { status: 204 });
+  }
+  async releaseRoom(request) {
+    const body = await request.json().catch(() => null);
+    const id = String(body?.id || "").toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(id)) return json({ error: "Invalid room release." }, 400);
+    this.sql.exec("DELETE FROM active_public_rooms WHERE room_id = ?", id);
     return new Response(null, { status: 204 });
   }
   readRoom() {
@@ -212,6 +253,29 @@ export class RoomCoordinator {
     this.saveRoom(room);
     await this.ctx.storage.setAlarm(room.createdAt + ROOM_TTL_MS);
     return json({ id: room.id }, 201);
+  }
+  async releaseRoomSlot(roomId) {
+    try {
+      const control = this.env.ROOMS.get(this.env.ROOMS.idFromName("__sonicsync_global_control__"));
+      await control.fetch("https://sonicsync-room.internal/_internal/rooms/release", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: roomId })
+      });
+    } catch {}
+  }
+  async deleteRoom(request) {
+    const room = this.requireRoom();
+    if (!room || !this.hostMatches(room, request)) return json({ error: "Invalid room or host authorization." }, 403);
+    const roomId = room.id;
+    for (const ws of this.ctx.getWebSockets()) {
+      this.send(ws, { type: "roomClosed", revision: room.revision, message: "The host closed this room." });
+      try { ws.close(4004, "Room closed by host"); } catch {}
+    }
+    this.sql.exec("DELETE FROM upload_sessions");
+    this.sql.exec("DELETE FROM media_chunks");
+    this.sql.exec("DELETE FROM room_state WHERE id = 1");
+    try { await this.ctx.storage.deleteAlarm(); } catch {}
+    await this.releaseRoomSlot(roomId);
+    return new Response(null, { status: 204 });
   }
   attachment(ws) { try { return ws.deserializeAttachment() || null; } catch { return null; } }
   writeAttachment(ws, attachment) { ws.serializeAttachment(attachment); }
@@ -538,8 +602,13 @@ export class RoomCoordinator {
     const room = this.readRoom(), now = Date.now();
     if (!room) { this.sql.exec("DELETE FROM room_create_rate WHERE created_at < ?", now - 3600000); this.sql.exec("DELETE FROM room_join_rate WHERE created_at < ?", now - 60000); return; }
     if (now - room.createdAt >= ROOM_TTL_MS) {
+      const roomId = room.id;
+      for (const ws of this.ctx.getWebSockets()) {
+        this.send(ws, { type: "roomClosed", revision: room.revision, message: "This room expired." });
+        try { ws.close(1001, "Room expired"); } catch {}
+      }
       this.sql.exec("DELETE FROM room_state WHERE id = 1"); this.sql.exec("DELETE FROM upload_sessions"); this.sql.exec("DELETE FROM media_chunks");
-      for (const ws of this.ctx.getWebSockets()) try { ws.close(1001, "Room expired"); } catch {}
+      await this.releaseRoomSlot(roomId);
       return;
     }
     if (room.state === "armed" && room.startAt != null && now >= room.startAt) {
