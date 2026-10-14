@@ -1,14 +1,17 @@
 import fs from "node:fs";
 import assert from "node:assert/strict";
 const worker = fs.readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
-const wrangler = fs.readFileSync(new URL("../cloudflare/wrangler.jsonc", import.meta.url), "utf8");
+const wrangler = JSON.parse(fs.readFileSync(new URL("../cloudflare/wrangler.jsonc", import.meta.url), "utf8"));
 const app = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
 const expectedPublicRegex = "if (!/" + String.fromCharCode(92) + ".(mp3|wav)$/i.test(file.name))";
+const hasRoomBinding = (wrangler.durable_objects?.bindings || []).some(b => b.name === "ROOMS" && b.class_name === "RoomCoordinator");
+const hasSqliteMigration = (wrangler.migrations || []).some(m => (m.new_sqlite_classes || []).includes("RoomCoordinator"));
 const checks = [
   ["health route", worker.includes('path === "/api/health"')],
   ["public backend mode", worker.includes('backendMode: "public"')],
-  ["public rooms use SQLite Durable Objects", wrangler.includes('"class_name": "RoomCoordinator"') && wrangler.includes('"new_sqlite_classes": ["RoomCoordinator"]')],
+  ["public room Durable Object binding", hasRoomBinding],
+  ["SQLite Durable Object migration", hasSqliteMigration],
   ["room-scoped WebSocket routing", worker.includes('url.searchParams.get("room")') && app.includes("wsUrl(room)")],
   ["chunked upload endpoints", worker.includes("/_internal/upload/begin") && worker.includes("async putChunk")],
   ["server-side SHA-256 verification", worker.includes('crypto.subtle.digest("SHA-256", joined)')],
