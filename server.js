@@ -15,7 +15,7 @@ import { validateControlMessage } from "./src/core/protocol.mjs";
 
 const PORT = clampInt(process.env.PORT, 8787, 1024, 65535);
 const IS_SERVERLESS = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\\/$/, "");
+const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const IDLE_ROOM_TTL_MS = 20 * 60 * 1000;
 const TIMELINE_PROTOCOL_VERSION = 2;
@@ -122,6 +122,15 @@ function localIPv4Candidates() {
   return out.length ? out : ["localhost"];
 }
 function localIPv4() { return localIPv4Candidates()[0]; }
+function publicBaseUrl(req) {
+  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const forwardedHost = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
+  const host = forwardedHost || String(req.headers.host || "").trim();
+  const proto = forwardedProto || (req.socket?.encrypted ? "https" : "http");
+  if (host && !/^(localhost|127(?:\.\d{1,3}){3})(:\d+)?$/i.test(host)) return proto + "://" + host;
+  return "http://" + localIPv4() + ":" + PORT;
+}
 function hostName() { return safeText(os.hostname(), 64) || "sonicsync-host"; }
 function mediaPath(room, token) { return `/media/${encodeURIComponent(room.id)}/${encodeURIComponent(token)}`; }
 function clientIp(req) { return String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim(); }
@@ -387,7 +396,7 @@ app.post("/api/room", (req, res) => {
   rooms.set(id, room);
   publishDiscovery(room);
   schedulePersist();
-  res.json({ id, hostToken: room.hostToken, joinBase: `http://${localIPv4()}:${PORT}`, hostname: hostName(), discoveryService: `SonicSync-${id}._sonicsync._tcp.local` });
+  res.json({ id, hostToken: room.hostToken, joinBase: publicBaseUrl(req), hostname: hostName(), discoveryService: `SonicSync-${id}._sonicsync._tcp.local` });
 });
 
 function activateQueuedTrack(room, index, { reason = "queue" } = {}) {
@@ -526,8 +535,7 @@ app.head("/media/:room/:token", (req, res) => res.status(405).end());
 app.get("/api/qr/:room", async (req, res) => {
   const room = roomFor(req.params.room);
   if (!room) return res.status(404).end();
-  const ip = localIPv4();
-  const url = `http://${ip}:${PORT}/?room=${encodeURIComponent(room.id)}`;
+  const url = `${publicBaseUrl(req)}/?room=${encodeURIComponent(room.id)}`;
   try { res.type("png").send(await QRCode.toBuffer(url, { width: 512, margin: 2, errorCorrectionLevel: "M" })); }
   catch { res.status(500).end(); }
 });

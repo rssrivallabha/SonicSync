@@ -57,3 +57,13 @@ Always report these separately:
 `clock offset` · `clock drift` · `clock uncertainty` · `playback phase error` · `output latency` · `acoustic error` · `node-to-node skew`.
 
 Simulation data and software telemetry are not acoustic measurements. No sub-ms or universal 50 m synchronization claim is valid until the physical measurement fixture produces the evidence.
+
+## Public makeshift-speaker product (in progress)
+
+SonicSync is being developed toward an easy public room experience: create a room, share a code/QR link, upload an MP3/WAV, and let each device prepare and follow the shared timeline. The public hosted backend is a separate deployment target; the existing LAN/offline Node server remains supported.
+
+- Product scope and acceptance: [docs/PUBLIC_PRODUCT_PLAN.md](docs/PUBLIC_PRODUCT_PLAN.md)
+- Public mode design: [docs/PUBLIC_MODE_ARCHITECTURE.md](docs/PUBLIC_MODE_ARCHITECTURE.md)
+- Release gates: [docs/PUBLIC_ROLLOUT_CHECKLIST.md](docs/PUBLIC_ROLLOUT_CHECKLIST.md)
+
+The public edge backend is not considered implemented until the checklist's room coordination, media upload/range delivery, security and end-to-end smoke tests pass. Deployment must remain free-first; do not enable paid resources or provide billing details without owner approval.
