@@ -70,6 +70,9 @@ checks.push(
 checks.push(
   ['host can close local room safely', server.includes('app.delete("/api/room/:room"') && server.includes('type: "roomClosed"') && server.includes("removeRoom(room)"), 'local room close endpoint missing or unauthenticated']
 );
+checks.push(
+  ['server shutdown clears maintenance loop', server.includes("const maintenanceTimer = setInterval(") && server.includes("clearInterval(maintenanceTimer)") && server.includes("const forceTimer = setTimeout("), 'SIGTERM can leave the Node server interval alive']
+);
 let failed = 0;
 for (const [name, ok, detail] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : ` — ${detail}`}`); if (!ok) failed++; }
 if (failed) process.exit(1);

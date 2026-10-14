@@ -938,7 +938,7 @@ wss.on("connection", ws => {
   });
 });
 
-setInterval(() => {
+const maintenanceTimer = setInterval(() => {
   const t = now();
   for (const room of rooms.values()) {
     for (const c of room.clients.values()) {
@@ -987,11 +987,28 @@ setInterval(() => {
   }
 }, 100);
 
+let shuttingDown = false;
 function shutdown() {
-  persistRooms();
+  if (shuttingDown) return;
+  shuttingDown = true;
+  clearInterval(maintenanceTimer);
+  if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
+  try { persistRooms(); } catch (error) { console.error("Final persistence failed:", error?.message || error); }
+  for (const ws of wss.clients) {
+    try { ws.close(1001, "SonicSync server shutting down"); } catch {}
+  }
   try { bonjour?.destroy?.(); } catch {}
   try { wss.close(); } catch {}
-  try { server.close(); } catch {}
+  try {
+    server.close(() => {
+      // HTTP shutdown completed; normally the process exits naturally here.
+    });
+  } catch {}
+  const forceTimer = setTimeout(() => {
+    for (const ws of wss.clients) { try { ws.terminate(); } catch {} }
+    process.exit(0);
+  }, 1200);
+  forceTimer.unref();
 }
 process.on("SIGINT", shutdown); process.on("SIGTERM", shutdown);
 server.listen(PORT, "0.0.0.0", () => {
