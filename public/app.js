@@ -100,7 +100,7 @@ function localFromServerEpoch(serverEpoch) {
   if (Math.abs(ratio) < 0.5) return finite(serverEpoch) - c.anchorOffsetMs;
   return c.anchorLocalMs + (finite(serverEpoch) - (c.anchorLocalMs + c.anchorOffsetMs)) / ratio;
 }
-function wsUrl() { return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`; }
+function wsUrl(room) { const u = new URL(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`); if (room) u.searchParams.set("room", String(room).toUpperCase()); return u.toString(); }
 function log(message) { state.logLines.unshift(`[${new Date().toLocaleTimeString()}] ${message}`); state.logLines = state.logLines.slice(0, 14); if ($("#log")) $("#log").textContent = state.logLines.join("\n"); }
 function roomStatePlaying() { return state.snapshot && ["playing", "pausing", "stopping"].includes(state.snapshot.state) && state.snapshot.startedAt != null; }
 function send(message) { if (state.ws?.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify(message)); }
@@ -196,7 +196,7 @@ function connect(room, role, name, hostToken) {
   state.clock = { samples: [], offsetMs: 0, driftPpm: 0, anchorLocalMs: 0, anchorOffsetMs: 0, jitterMs: 0 };
   state.clockLocked = false; state.clockUncertaintyMs = 0; state.syncConfidence = 0;
   $("#roomCode").textContent = state.room; $("#connectionBadge").textContent = "CONNECTING"; $("#connectionBadge").className = "badge bad";
-  const ws = new WebSocket(wsUrl()); state.ws = ws;
+  const ws = new WebSocket(wsUrl(room)); state.ws = ws;
   ws.binaryType = "arraybuffer";
   ws.onopen = () => {
     state.reconnectAttempt = 0;
@@ -1187,16 +1187,64 @@ $("#lockBtn")?.addEventListener("click", () => send({ type: "lockRoom", locked: 
 $("#seek")?.addEventListener("input", e => { if (!isHost() || !trackDuration()) return; state._seekDrag = true; const p = (Number(e.target.value) / 1000) * trackDuration(); $("#pos").textContent = fmt(p); });
 $("#seek")?.addEventListener("change", e => { if (!isHost() || !trackDuration()) return; state._seekDrag = false; const p = (Number(e.target.value) / 1000) * trackDuration(); send({ type: "seek", position: p, duration: trackDuration() }); });
 
+async function uploadPublicTrack(file) {
+  const config = await api("/api/config");
+  const maxBytes = Number(config.uploadMaxBytes) || (25 * 1024 * 1024);
+  if (file.size > maxBytes) throw new Error("Public beta track limit is 25 MiB. Choose a smaller MP3/WAV file.");
+  if (!/\\.(mp3|wav)$/i.test(file.name)) throw new Error("Public beta currently accepts MP3 and WAV files.");
+  if (!crypto?.subtle) throw new Error("SHA-256 is unavailable. Open SonicSync over HTTPS.");
+  $("#fileTitle").textContent = "Verifying " + file.name;
+  const raw = await file.arrayBuffer();
+  const digestBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", raw));
+  const sha256 = [...digestBytes].map(b => b.toString(16).padStart(2, "0")).join("");
+  const headers = { "X-SonicSync-Room": state.room, "X-SonicSync-Host": state.hostToken, "Content-Type": "application/json" };
+  const begin = await api("/api/public-upload/" + state.room + "/begin", {
+    method: "POST", headers,
+    body: JSON.stringify({ name: file.name, mime: /\\.wav$/i.test(file.name) ? "audio/wav" : "audio/mpeg", bytes: file.size, sha256 })
+  });
+  const chunkSize = Number(begin.chunkSize) || 1024 * 1024, count = Number(begin.chunkCount);
+  for (let index = 0; index < count; index++) {
+    const start = index * chunkSize, end = Math.min(file.size, start + chunkSize), chunk = file.slice(start, end);
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch("/api/public-upload/" + state.room + "/" + begin.uploadId + "/" + index, {
+          method: "PUT",
+          headers: { "X-SonicSync-Room": state.room, "X-SonicSync-Host": state.hostToken, "Content-Type": "application/octet-stream" },
+          body: chunk
+        });
+        if (!response.ok) throw new Error(await response.text() || "HTTP " + response.status);
+        lastError = null; break;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+      }
+    }
+    if (lastError) throw lastError;
+    $("#fileTitle").textContent = "Uploading " + file.name + " • " + Math.round((end / file.size) * 100) + "%";
+  }
+  $("#fileTitle").textContent = "Verifying uploaded media…";
+  return api("/api/public-upload/" + state.room + "/" + begin.uploadId + "/complete", {
+    method: "POST", headers: { "X-SonicSync-Room": state.room, "X-SonicSync-Host": state.hostToken }
+  });
+}
 async function uploadSelected(file) {
   if (!file) return;
   $("#fileTitle").textContent = file.name;
   try {
-    log(`UPLOAD • ${file.name}`);
-    const track = await api("/api/upload", { method: "POST", headers: { "X-SonicSync-Room": state.room, "X-SonicSync-Host": state.hostToken }, body: (() => { const fd = new FormData(); fd.append("audio", file); return fd; })() });
+    log("UPLOAD • " + file.name);
+    const config = await api("/api/config");
+    let track;
+    if (config.backendMode === "public") track = await uploadPublicTrack(file);
+    else track = await api("/api/upload", {
+      method: "POST",
+      headers: { "X-SonicSync-Room": state.room, "X-SonicSync-Host": state.hostToken },
+      body: (() => { const fd = new FormData(); fd.append("audio", file); return fd; })()
+    });
     state.snapshot = state.snapshot || { track: null, devices: [], ready: { total: 0, ready: 0 }, state: "ready", volume: 1, muted: false };
     state.snapshot.track = track; render(state.snapshot); await prepareTrack(track);
     log("TRACK COMMITTED • all joined nodes will preload automatically.");
-  } catch (e) { log(`UPLOAD FAILED • ${e.message}`); alert(e.message); }
+  } catch (e) { log("UPLOAD FAILED • " + e.message); alert(e.message); }
 }
 $("#file")?.addEventListener("change", e => uploadSelected(e.target.files[0]));
 const drop = $("#drop");
