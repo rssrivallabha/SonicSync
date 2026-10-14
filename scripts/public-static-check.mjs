@@ -10,6 +10,7 @@ const hasSqliteMigration = (wrangler.migrations || []).some(m => (m.new_sqlite_c
 const checks = [
   ["health route", worker.includes('path === "/api/health"')],
   ["public backend mode", worker.includes('backendMode: "public"')],
+  ["public asset routing runs Worker first", wrangler.assets?.run_worker_first === true],
   ["public room Durable Object binding", hasRoomBinding],
   ["SQLite Durable Object migration", hasSqliteMigration],
   ["unique room lifecycle handlers", ["webSocketClose","webSocketError","alarm","beginUpload","putChunk","completeUpload","serveMedia","diagnostics"].every(name => worker.split("async " + name + "(").length === 2)],

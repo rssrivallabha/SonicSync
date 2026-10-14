@@ -1,6 +1,6 @@
 # Cloudflare public mode
 
-This is a separate public deployment target. It does not replace the local Node.js server.
+This is a separate public deployment target. It does not replace the local Node.js server. The Wrangler assets config uses `run_worker_first: true` so WebSocket upgrades and `/api/*` routes reach the Worker before the static asset fallback.
 
 ## Before deploying
 
