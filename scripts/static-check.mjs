@@ -14,7 +14,7 @@ const missing = [...refs].filter(id => !ids.has(id));
 const checks = [
  ['HTML/JS selectors', missing.length === 0, missing.join(', ')],
  ['hidden CSS', /\.hidden\s*\{[^}]*display:\s*none\s*!important/.test(css), 'missing .hidden rule'],
- ['v10 package/server version', pkg.version === '10.0.3' && /SonicSync v10\.0\.3 running/.test(server), 'stale package/server version'],
+ ['v10.1 package/server version', pkg.version === '10.1.0' && /SonicSync v10\.1\.0 running/.test(server), 'stale package/server version'],
  ['upload commit ordering', /room\.track\s*=\s*track;[\s\S]*res\.json\(publicTrack\(track\)\)/.test(server), 'track commit race regression'],
  ['late-command compensation', /const lateMs = Math\.max\(0, nowS - startServer\)/.test(js), 'late schedule extrapolation missing'],
  ['adaptive sync lead', /function adaptiveLeadMs/.test(server) && /adaptiveLeadMs\(room, client/.test(server) && /function directLeadMs/.test(js), 'adaptive lead missing'],
@@ -36,7 +36,7 @@ const checks = [
  ['command revisions', /room\.revision/.test(server) && /commandIsFresh/.test(js), 'revision guard missing'],
  ['service worker dynamic exclusion', /startsWith\('\/api\/'\)/.test(sw) && /startsWith\('\/media\/'\)/.test(sw), 'dynamic endpoints cached'],
  ['no legacy upload registration', !/m\.type === "track"/.test(server), 'legacy track message remains'],
- ['local-only transport', /noInternetRequired: true/.test(server) && /iceServers: \[\]/.test(js), 'offline/local transport claim missing'],
+ ['local/offline transport retained', /noInternetRequired: true/.test(server) && /state\.backendMode === "public" \? \[\{ urls: "stun:stun\.l\.google\.com:19302" \}\] : \[\]/.test(js), 'offline/local transport claim missing'],
  ['direct start handoff', /k:\s*"startAt"/.test(js) && /pendingStart/.test(js) && /contextTimeToLocalOutputEpoch/.test(js), 'direct host-output start handoff missing'],
  ['auto-sync throttle', /lastAutoSyncRequestAt/.test(js) && /1400/.test(js), 'auto drift can flood sync requests'],
  ['continuous phase PLL', /phase-lock\.mjs/.test(js) && /updatePhaseLock/.test(js) && /lastRateCorrectionPpm/.test(js), 'continuous phase controller missing'],

@@ -1,4 +1,4 @@
-const CACHE = 'sonicsync-shell-v10';
+const CACHE = 'sonicsync-shell-v10.1.0';
 const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/manifest.webmanifest'];
 
 self.addEventListener('install', event => {

@@ -318,7 +318,7 @@ function publishDiscovery(room) {
 function hostAuthorized(room, m) { return m?.hostToken && m.hostToken === room.hostToken; }
 
 app.get("/api/config", (req, res) => res.json({
-  version: "10.0.3",
+  version: "10.1.0",
   backendMode: "local",
   port: PORT,
   lanIP: localIPv4(),
@@ -334,7 +334,7 @@ app.get("/api/config", (req, res) => res.json({
 app.get("/api/time", (req, res) => res.json({ now: now() }));
 app.get("/api/health", (req, res) => res.json({
   status: "ok",
-  version: "10.0.3",
+  version: "10.1.0",
   deploymentMode: IS_SERVERLESS ? "serverless-ephemeral" : "persistent-single-process",
   storage: IS_SERVERLESS ? "ephemeral" : "configured-local",
   durableRoomsAndMedia: !IS_SERVERLESS,
@@ -986,7 +986,7 @@ function shutdown() {
 }
 process.on("SIGINT", shutdown); process.on("SIGTERM", shutdown);
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`\nSonicSync v10.0.3 running`);
+  console.log(`\nSonicSync v10.1.0 running`);
   console.log(`Local:        http://localhost:${PORT}`);
   console.log(`LAN:          http://${localIPv4()}:${PORT}`);
   console.log(`Other LAN IPs: ${localIPv4Candidates().join(", ")}`);

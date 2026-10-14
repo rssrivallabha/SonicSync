@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 const worker = fs.readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
 const wrangler = JSON.parse(fs.readFileSync(new URL("../cloudflare/wrangler.jsonc", import.meta.url), "utf8"));
 const app = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+const html = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+const serviceWorker = fs.readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
 const server = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
 const expectedPublicRegex = "if (!/" + String.fromCharCode(92) + ".(mp3|wav)$/i.test(file.name))";
 const hasRoomBinding = (wrangler.durable_objects?.bindings || []).some(b => b.name === "ROOMS" && b.class_name === "RoomCoordinator");
@@ -14,6 +16,7 @@ const checks = [
   ["public direct RTC has STUN without changing offline ICE", app.includes('state.backendMode === "public" ? [{ urls: "stun:stun.l.google.com:19302" }] : []')],
   ["telemetry fanout avoids repetitive SQLite writes", !worker.slice(worker.indexOf('if (m.type === "telemetry")'), worker.indexOf('if (m.type === "ready")', worker.indexOf('if (m.type === "telemetry")'))).includes("saveRoom(room)")],
   ["public room bounds", worker.includes("const MAX_CLIENTS = 8;") && worker.includes("const ROOM_TTL_MS = 4 * 60 * 60 * 1000;")],
+  ["frontend cache busting", html.includes("app.js?v=10.1.0") && html.includes("style.css?v=10.1.0") && serviceWorker.includes("sonicsync-shell-v10.1.0")],
   ["health route", worker.includes('path === "/api/health"')],
   ["public backend mode", worker.includes('backendMode: "public"')],
   ["public asset routing runs Worker first", wrangler.assets?.run_worker_first === true],
