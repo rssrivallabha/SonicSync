@@ -38,9 +38,9 @@ function forwardedRequest(request, internalPath) {
   return new Request(new URL(internalPath, "https://sonicsync-room.internal"), request);
 }
 function originOf(request) { return new URL(request.url).origin; }
-function allowedMedia(name, mime) {
+function allowedMedia(name) {
   const ext = String(name || "").toLowerCase().split(".").pop();
-  return ext === "mp3" || ext === "wav" || mime === "audio/mpeg" || mime === "audio/wav" || mime === "audio/x-wav";
+  return ext === "mp3" || ext === "wav";
 }
 function canonicalMime(name) { return String(name || "").toLowerCase().endsWith(".wav") ? "audio/wav" : "audio/mpeg"; }
 
@@ -304,6 +304,7 @@ export class RoomCoordinator {
       const limiter = this.env.ROOMS.get(this.env.ROOMS.idFromName("__sonicsync_global_control__"));
       const limited = await limiter.fetch("https://sonicsync-room.internal/_internal/rate/join", { method: "POST", headers: { "x-client-ip": ip } });
       if (!limited.ok) { this.send(ws, { type: "error", message: "Too many join attempts. Please wait before trying again." }); try { ws.close(4029, "Join rate limited"); } catch {} return; }
+      items = this.clients(room);
       const requestedHost = m.role === "host";
       const host = requestedHost && this.hostMatches(room, new Request("https://internal.invalid", { headers: { "x-sonicsync-host": String(m.hostToken || "") } }));
       if (requestedHost && !host) return this.send(ws, { type: "error", message: "Host authorization failed." });
@@ -570,7 +571,7 @@ export class RoomCoordinator {
     const room = this.requireRoom();
     if (!room || !this.hostMatches(room, request)) return json({ error: "Invalid room or host authorization." }, 403);
     const body = await request.json().catch(() => null);
-    if (!body || !allowedMedia(body.name, body.mime)) return json({ error: "Only MP3 and WAV uploads are supported in the public beta." }, 415);
+    if (!body || !allowedMedia(body.name)) return json({ error: "Only MP3 and WAV uploads are supported in the public beta." }, 415);
     const bytes = Number(body.bytes), sha256 = String(body.sha256 || "").toLowerCase();
     if (!Number.isSafeInteger(bytes) || bytes < 1 || bytes > MAX_TRACK_BYTES) return json({ error: "Track must be 1 byte to 25 MiB." }, 413);
     if (!/^[a-f0-9]{64}$/.test(sha256)) return json({ error: "Invalid SHA-256 digest." }, 400);
