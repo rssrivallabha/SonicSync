@@ -595,7 +595,7 @@ function render(snapshot) {
   $("#startBtn").disabled = !startable;
   $("#startBtn").textContent = !state.audioEnabled ? "PLAY • ENABLE HOST AUDIO" : "PLAY WHEN READY";
   $("#pauseBtn").disabled = !isHost() || snapshot.state !== "playing";
-  $("#resumeBtn").disabled = !isHost() || !["paused", "stopped"].includes(snapshot.state) || snapshot.ready.prepared < snapshot.ready.total || snapshot.ready.clockReady < snapshot.ready.total;
+  $("#resumeBtn").disabled = !isHost() || !["paused", "stopped"].includes(snapshot.state) || snapshot.ready.total === 0 || snapshot.ready.prepared < snapshot.ready.total || snapshot.ready.clockLocked < snapshot.ready.total;
   $("#resumeBtn").textContent = !state.audioEnabled ? "RESUME • ENABLE HOST AUDIO" : "RESUME";
   $("#stopBtn").disabled = !isHost() || !["playing", "pausing", "armed", "stopping"].includes(snapshot.state);
   $("#resetBtn").disabled = !isHost() || !snapshot.track || snapshot.state === "idle";
