@@ -20,7 +20,8 @@
     "measurement:check": "node scripts/measurement-check.mjs",
     "public:dev": "npm exec -- wrangler --config cloudflare/wrangler.jsonc dev",
     "public:deploy": "npm exec -- wrangler --config cloudflare/wrangler.jsonc deploy",
-    "public:check": "node --check cloudflare/worker.js && node scripts/public-static-check.mjs && npm exec -- wrangler --config cloudflare/wrangler.jsonc deploy --dry-run"
+    "public:check": "node --check cloudflare/worker.js && node scripts/public-static-check.mjs && npm exec -- wrangler --config cloudflare/wrangler.jsonc deploy --dry-run",
+    "public:smoke": "node scripts/public-smoke-test.mjs"
   },
   "dependencies": {
     "bonjour-service": "1.4.4",
