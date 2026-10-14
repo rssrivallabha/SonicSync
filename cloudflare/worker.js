@@ -4,11 +4,11 @@ import { adaptiveLeadMs as coreAdaptiveLeadMs } from "../src/core/clock.mjs";
 const PROTOCOL_VERSION = 2;
 const MAX_CONTROL_BYTES = 128 * 1024;
 const MAX_ROOMS_PER_HOUR = 5;
-const MAX_CLIENTS = 32;
+const MAX_CLIENTS = 8;
 const MAX_ROOM_MEDIA_BYTES = 100 * 1024 * 1024;
 const MAX_TRACK_BYTES = 25 * 1024 * 1024;
 const CHUNK_BYTES = 1024 * 1024;
-const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+const ROOM_TTL_MS = 4 * 60 * 60 * 1000;
 const MAX_UPLOADS_PER_HOUR = 20;
 const ROOM_RE = /^[A-Z0-9]{6}$/;
 
@@ -134,6 +134,7 @@ export class RoomCoordinator {
     this.ctx = ctx;
     this.env = env;
     this.sql = ctx.storage.sql;
+    this.lastSnapshotBroadcastAt = 0;
     ctx.blockConcurrencyWhile(async () => {
       this.sql.exec("CREATE TABLE IF NOT EXISTS room_state (id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL, updated_at INTEGER NOT NULL)");
       this.sql.exec("CREATE TABLE IF NOT EXISTS upload_sessions (id TEXT PRIMARY KEY, payload TEXT NOT NULL, created_at INTEGER NOT NULL)");
@@ -371,9 +372,8 @@ export class RoomCoordinator {
       a.info.transport = String(m.transport || "Public WS").slice(0, 24);
       this.writeAttachment(ws, a);
       const observedAt = Date.now();
-      if (observedAt - Number(room.lastSnapshotAt || 0) >= 500) {
-        room.lastSnapshotAt = observedAt;
-        this.saveRoom(room);
+      if (observedAt - this.lastSnapshotBroadcastAt >= 500) {
+        this.lastSnapshotBroadcastAt = observedAt;
         this.broadcastSnapshot(room);
       }
       return;

@@ -10,6 +10,11 @@ const AC = window.AudioContext || window.webkitAudioContext;
 
 const state = {
   ws: null,
+  backendMode: "local",
+  backendConfigReady: null,
+  connectGeneration: 0,
+  clockBurstTimer: null,
+  lastReadySignature: null,
   room: null,
   role: null,
   clientId: null,
@@ -177,6 +182,13 @@ $("#joinBtn")?.addEventListener("click", joinAsClient);
 $("#deviceName") && ($("#deviceName").value = state.deviceName);
 
 function boot() {
+  state.backendConfigReady = api("/api/config").then(config => {
+    state.backendMode = config.backendMode === "public" ? "public" : "local";
+    return state.backendMode;
+  }).catch(() => {
+    state.backendMode = "local";
+    return state.backendMode;
+  });
   const p = new URLSearchParams(location.search), room = p.get("room"), wantsHost = p.get("host") === "1";
   if (room && wantsHost) {
     initApp(true);
@@ -190,9 +202,14 @@ function boot() {
   }
 }
 
-function connect(room, role, name, hostToken) {
+async function connect(room, role, name, hostToken) {
   clearTimeout(state.reconnectTimer);
-  state.room = room.toUpperCase(); state.role = role; state.hostToken = hostToken; state.intentionallyClosed = false;
+  const generation = ++state.connectGeneration;
+  const roomCode = room.toUpperCase();
+  state.room = roomCode; state.role = role; state.hostToken = hostToken; state.intentionallyClosed = false;
+  state.lastReadySignature = null;
+  await (state.backendConfigReady || Promise.resolve(state.backendMode));
+  if (generation !== state.connectGeneration || state.intentionallyClosed || state.room !== roomCode) return;
   state.clock = { samples: [], offsetMs: 0, driftPpm: 0, anchorLocalMs: 0, anchorOffsetMs: 0, jitterMs: 0 };
   state.clockLocked = false; state.clockUncertaintyMs = 0; state.syncConfidence = 0;
   $("#roomCode").textContent = state.room; $("#connectionBadge").textContent = "CONNECTING"; $("#connectionBadge").className = "badge bad";
@@ -204,11 +221,12 @@ function connect(room, role, name, hostToken) {
     send({ type: "join", room: state.room, role, name, hostToken });
     initRTCForRole();
     startClockSync(); startTelemetryLoop();
-    log(`CONTROL LINK • ${role.toUpperCase()} • local LAN`);
+    log(`CONTROL LINK • ${role.toUpperCase()} • ${state.backendMode === "public" ? "public Internet" : "local LAN/offline"}`);
   };
   ws.onclose = () => {
     $("#connectionBadge").textContent = "RECONNECTING"; $("#connectionBadge").className = "badge warn";
-    clearInterval(state.syncTimer); clearInterval(state.telemetryTimer);
+    if (state.ws !== ws) return;
+    clearInterval(state.syncTimer); clearInterval(state.telemetryTimer); clearInterval(state.clockBurstTimer); state.clockBurstTimer = null;
     if (state.intentionallyClosed) return;
     const delay = Math.min(7000, 400 * (2 ** state.reconnectAttempt++));
     log(`CONTROL LINK CLOSED • reconnecting in ${delay}ms.`);
@@ -274,8 +292,10 @@ function handle(m) {
 
 
 function rtcConfig() {
-  // Local-only ICE: no STUN/TURN dependency. WebRTC should select LAN/private candidates.
-  return { iceServers: [], iceCandidatePoolSize: 4, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" };
+  // Local/offline rooms avoid Internet ICE dependencies. Public rooms try a STUN-assisted direct path;
+  // WebSocket/server-clock coordination remains the fallback. No paid TURN service is provisioned.
+  const iceServers = state.backendMode === "public" ? [{ urls: "stun:stun.l.google.com:19302" }] : [];
+  return { iceServers, iceCandidatePoolSize: 4, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" };
 }
 function sendRtcSignal(targetClientId, payload) { send({ type: "rtcSignal", targetClientId, payload }); }
 function rtcStatus(peerId, stateValue) { send({ type: "rtcState", peerId, state: stateValue }); }
@@ -769,13 +789,30 @@ window.addEventListener("pageshow", () => { if (roomStatePlaying() && state.audi
 
 function startClockSync() {
   clearInterval(state.syncTimer);
+  clearInterval(state.clockBurstTimer);
+  state.clockBurstTimer = null;
   state.clock.samples = [];
   let seq = 0;
-  const tick = () => { if (state.ws?.readyState !== WebSocket.OPEN) return; const t1 = localNowMs(); send({ type: "sync", t1, seq: ++seq }); };
+  const publicMode = state.backendMode === "public";
+  const burstCount = publicMode ? 8 : 20;
+  const burstEveryMs = publicMode ? 125 : 100;
+  const refreshEveryMs = publicMode ? 3000 : 500;
+  const tick = () => {
+    if (state.ws?.readyState !== WebSocket.OPEN) return;
+    const t1 = localNowMs();
+    send({ type: "sync", t1, seq: ++seq });
+  };
   tick();
   let sent = 0;
-  const burst = setInterval(() => { if (++sent >= 20) return clearInterval(burst); tick(); }, 100);
-  state.syncTimer = setInterval(tick, 500);
+  state.clockBurstTimer = setInterval(() => {
+    if (++sent >= burstCount) {
+      clearInterval(state.clockBurstTimer);
+      state.clockBurstTimer = null;
+      return;
+    }
+    tick();
+  }, burstEveryMs);
+  state.syncTimer = setInterval(tick, refreshEveryMs);
 }
 function weightedMedian(items) {
   const sorted = [...items].sort((a, b) => a.value - b.value); const total = sorted.reduce((s, x) => s + x.weight, 0); let acc = 0;
@@ -814,8 +851,25 @@ function finishClockSync(m) {
 
 function sendReady(status = "ready") {
   if (!state.snapshot?.track) return;
+  const readinessSignature = [
+    state.snapshot.track.id, state.audioReady, state.audioEnabled, state.clockLocked,
+    state.clock.samples.length >= 3
+  ].join(":");
+  if (readinessSignature === state.lastReadySignature) return;
+  state.lastReadySignature = readinessSignature;
   send({ type: "ready", trackId: state.snapshot.track.id, durationSec: trackDuration(), audioReady: state.audioReady, audioEnabled: state.audioEnabled, bufferSec: trackDuration(), outputLatencyMs: state.outputLatencyMs, baseLatencyMs: state.baseLatencyMs, clockLocked: state.clockLocked, clockSampleCount: state.clock.samples.length, clockUncertaintyMs: state.clockUncertaintyMs, syncConfidence: state.syncConfidence });
   sendTelemetry(status);
+}
+function startTelemetryLoop() {
+  clearInterval(state.telemetryTimer);
+  const intervalMs = state.backendMode === "public" ? 10000 : 1000;
+  const publish = () => {
+    if (state.ws?.readyState !== WebSocket.OPEN) return;
+    const status = state.playing ? "playing" : state.audioReady ? (state.clockLocked ? "ready" : "clock-sync") : "connected";
+    sendTelemetry(status);
+  };
+  publish();
+  state.telemetryTimer = setInterval(publish, intervalMs);
 }
 function sendTelemetry(status) {
   send({ type: "telemetry", offsetMs: state.clock.offsetMs, clockDriftPpm: state.clock.driftPpm, clockJitterMs: state.clock.jitterMs, clockUncertaintyMs: state.clockUncertaintyMs, syncConfidence: state.syncConfidence, rttMs: state.rttMs, syncErrorMs: computeSyncErrorMs(), lastSyncErrorMs: state.lastSyncErrorMs, rateCorrectionPpm: finite(state.lastRateCorrectionPpm, 0), durationSec: trackDuration(), outputLatencyMs: state.outputLatencyMs, baseLatencyMs: state.baseLatencyMs, bufferSec: Math.max(0, trackDuration() - currentLocalPosition()), status, audioReady: state.audioReady, audioEnabled: state.audioEnabled, clockLocked: state.clockLocked, clockSampleCount: state.clock.samples.length, transport: state.rtc.hostPeerId && state.rtc.peers.get(state.rtc.hostPeerId)?.channels?.control?.readyState === "open" ? "RTC-P2P" : "LAN" });

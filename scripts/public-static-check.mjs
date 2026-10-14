@@ -8,6 +8,12 @@ const expectedPublicRegex = "if (!/" + String.fromCharCode(92) + ".(mp3|wav)$/i.
 const hasRoomBinding = (wrangler.durable_objects?.bindings || []).some(b => b.name === "ROOMS" && b.class_name === "RoomCoordinator");
 const hasSqliteMigration = (wrangler.migrations || []).some(m => (m.new_sqlite_classes || []).includes("RoomCoordinator"));
 const checks = [
+  ["browser defines the telemetry loop", app.includes("function startTelemetryLoop()") && app.includes("state.telemetryTimer = setInterval(publish, intervalMs)")],
+  ["public clock cadence is quota-aware", app.includes("const refreshEveryMs = publicMode ? 3000 : 500") && app.includes("state.backendMode = config.backendMode === \"public\" ? \"public\" : \"local\"")],
+  ["readiness publication is deduplicated", app.includes("readinessSignature === state.lastReadySignature")],
+  ["public direct RTC has STUN without changing offline ICE", app.includes('state.backendMode === "public" ? [{ urls: "stun:stun.l.google.com:19302" }] : []')],
+  ["telemetry fanout avoids repetitive SQLite writes", !worker.slice(worker.indexOf('if (m.type === "telemetry")'), worker.indexOf('if (m.type === "ready")', worker.indexOf('if (m.type === "telemetry")'))).includes("saveRoom(room)")],
+  ["public room bounds", worker.includes("const MAX_CLIENTS = 8;") && worker.includes("const ROOM_TTL_MS = 4 * 60 * 60 * 1000;")],
   ["health route", worker.includes('path === "/api/health"')],
   ["public backend mode", worker.includes('backendMode: "public"')],
   ["public asset routing runs Worker first", wrangler.assets?.run_worker_first === true],

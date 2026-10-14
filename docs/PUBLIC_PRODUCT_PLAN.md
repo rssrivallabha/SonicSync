@@ -1,74 +1,84 @@
-# SonicSync Public Product Plan
+# Public Mode Architecture
 
-## Product goal
+## Decision
 
-Make SonicSync the simplest way to turn nearby phones, tablets, and laptops into a makeshift multi-speaker system. A host creates a room, shares a short code or QR link, uploads an MP3/WAV file, waits for participants to prepare, and starts playback against one authoritative timeline.
+Add a Cloudflare Workers + SQLite-backed Durable Objects deployment for public rooms, while retaining the existing Node.js server as the nearby/offline deployment. Do not convert the local server into a serverless shim and do not remove its mDNS/local-IP behavior.
 
-The product must be approachable to non-technical users while preserving the engineering discipline required for synchronized audio.
+Cloudflare is a candidate for a free-first prototype because its published Workers free plan currently includes 100,000 requests/day, and SQLite-backed Durable Objects have free-tier limits. This is a quota-bound prototype, not an unlimited or guaranteed-free production promise. Check official limits before deploying:
+- Workers pricing and limits: https://developers.cloudflare.com/workers/platform/pricing/
+- Durable Object pricing: https://developers.cloudflare.com/durable-objects/platform/pricing/
+- Durable Object limits, including the 2 MB maximum SQL row/BLOB size and 5 GB free aggregate storage: https://developers.cloudflare.com/durable-objects/platform/limits/
 
-## Target user experience
+No R2 bucket is required for the first increment. Cloudflare documents a free R2 allowance, but its setup involves adding an R2 subscription; this project must not require that step or ask the owner for billing details without consent.
 
-1. Open the HTTPS app on a supported device.
-2. Choose **Create Room** or **Join Room**.
-3. The host shares a room code, link, or QR code.
-4. The host uploads an MP3/WAV track.
-5. Each node downloads and decodes the same content locally and reports readiness.
-6. After required first-time audio activation, nodes clock-sync and join the readiness barrier.
-7. The host schedules playback at a future shared time.
-8. The room exposes honest sync status and gives the host safe retry/recovery controls.
+## Deployment targets
 
-## Product principles
+### Local / nearby
+- Entry point: server.js
+- Storage: DATA_DIR or ./data
+- Active state: single-process room map
+- Transport: HTTP + WebSocket, WebRTC direct peer timing/control where available, LAN/hotspot media delivery
+- Works without public internet
 
-- **Sync correctness before visual polish.** No “play now” control that ignores device readiness or clock uncertainty.
-- **Nearby/offline remains first-class.** Keep the current local Node server and its LAN/hotspot workflow. Public mode is an additional deployment target, not a replacement.
-- **Local decoding.** WebSocket traffic is for control, signaling, and telemetry; it must not become a continuous music-sample stream.
-- **Explicit user activation.** Browsers and mobile operating systems may require a gesture before audio output. Do not pretend this can be bypassed.
-- **Honest evidence.** Keep clock offset, clock drift, clock uncertainty, playback phase error, output latency, acoustic error, and node-to-node skew as distinct values. Simulation is not physical measurement.
-- **Free-first deployment.** Start on a no-cost plan where the provider permits it. Never add a paid service, paid plan, card verification, or a billable resource without asking the owner first.
-- **Privacy by default.** Use unguessable host tokens, validate control messages, rate-limit public endpoints, expire rooms and media, and do not log host tokens or uploaded audio.
-- **Progressive compatibility.** Browser/PWA is the first public target. Native Android/iOS/desktop and the hardware reference node remain explicit tracks, with platform evidence recorded separately.
+### Public beta
+- Static assets: existing public/ directory
+- Edge router: cloudflare/worker.js
+- Room coordinator: one SQLite-backed Durable Object per room
+- Room persistence: authoritative room JSON and media metadata in the room object's SQLite database
+- Media store: fixed-size BLOB chunks below the platform's 2 MB row limit; authenticated upload begin/chunk/complete APIs; SHA-256 verification before track commit
+- Playback: range-capable media route; each client fetches and decodes locally, then follows the shared timeline
+- WebSocket: room-specific route such as /ws?room=ABC123; the edge worker sends the connection to that room's Durable Object
+- WebRTC: existing peer negotiation remains a direct path; WebSocket relay is for signaling/fallback
+- Expiry: four-hour per-room TTL and deletion of expired media chunks
 
-## Release 0: Public beta
+## Public control-plane invariants
 
-### Included
-- Public HTTPS landing page and room UI
-- Anyone can create a room and join using a room code/link
-- Host-authorized MP3/WAV upload with strict size and rate limits
-- Local download/cache/decode on each participant
-- Shared future playback timeline
-- Play, pause, resume, stop/hold, reset, seek, volume/mute, queue/next/previous
-- WebSocket room presence/control and WebRTC direct peer signaling where available
-- Readiness, clock quality, and playback-error status
-- Basic diagnostics export
-- Room and media expiry with explicit quota errors
+- A room code locates a room; it does not grant host privileges.
+- Host operations require a random host token, checked server-side.
+- Client-supplied revisions, device telemetry, MIME types, filenames, hashes, byte counts and room codes are untrusted.
+- All command payloads are schema-validated and bounded.
+- Limit rooms/devices (eight simultaneous devices per room in the free-tier beta), upload size, chunks, upload frequency, active room duration, and retained media.
+- Content-Length, chunk index, expected chunk size and total byte count are validated.
+- A track remains unplayable until every expected chunk is present and the computed SHA-256 matches.
+- A stale command or timeline epoch cannot alter current playback.
+- Do not store the host token in logs. Return Cache-Control: no-store on room creation, upload, and control responses.
+- Error responses tell the user what happened and what action is available.
 
-### Not a release promise
-- Identical acoustic output across every model of phone
-- Sub-millisecond acoustic skew
-- Guaranteed 50 m range
-- DRM-protected or system audio capture
-- Native background playback on all platforms
-- Unlimited media uploads or unlimited free public use
+## Media budget for the first public beta
 
-## Two operating modes
+Use a conservative public cap (25 MiB per track; revisit only after measuring) and a chunk payload around 1.5 MB. This remains under the platform's 2 MB SQLite row/BLOB limit and avoids relying on a single huge HTTP upload body. The browser upload path will:
+1. Validate file type/size locally for quick feedback (server still validates).
+2. Compute SHA-256 using Web Crypto.
+3. Create an authenticated upload session.
+4. Upload sequential chunks with bounded retries and progress.
+5. Ask the room object to verify exact chunk count/size and the final digest.
+6. Commit the track and broadcast a track offer to connected participants.
+7. Remove incomplete uploads after a short timeout; expire committed media with the room.
 
-### Nearby/offline mode
-The existing Node.js server remains the local authority. Users connect to the same LAN or host hotspot. Internet is not required once the local setup is available. Bonjour discovery is opportunistic; a room code and reachable local URL remain the fallback.
+Because the free Durable Object storage allowance is finite (5 GB aggregate, per current documentation), do not present this model as unlimited storage. Provide explicit quota errors, short retention, and admin-visible storage metrics. If public adoption outgrows this, propose object storage; ask the project owner before enabling any billing-backed subscription.
 
-### Public room mode
-A separate edge deployment serves the same web client while assigning each room a durable coordination object. The public coordinator owns room state, WebSocket membership, signaling relay, upload authorization, and media metadata. Audio is stored as bounded chunks in the same room's SQLite-backed Durable Object for the first free-tier prototype, avoiding an R2 subscription requirement. The implementation must enforce caps and expiry because the free storage budget is shared and finite.
+## Readiness and sync
 
-## Success criteria
+Maintain distinct fields:
+- mediaReady: media downloaded and decoded
+- audioEnabled: local OS/browser output gate unlocked
+- clockLocked: clock estimator reached acceptance criteria
+- syncConfidence and clockUncertaintyMs
+- playbackPhaseErrorMs and rateCorrectionPpm
+- outputLatencyMs, acousticCalibrationOffsetMs, and measured nodeToNodeSkewMs when a physical measurement exists
 
-- New visitor can create a room and another device can join without an account.
-- Invalid room codes and unauthorized host commands fail safely.
-- Uploaded content is size-checked, chunk-checked, and SHA-256 verified before becoming playable.
-- A disconnect/reconnect does not duplicate playback or silently reset the timeline.
-- Track readiness and audio activation are different states.
-- The same synchronization core remains in use for local and public modes.
-- The automated smoke test can create, join, upload, prepare, schedule, pause, resume, seek, and clean up a public room.
-- Real-device trials record browser/OS/audio route, RTT/jitter, clock uncertainty, playback error, and observed acoustic skew. Claims are based only on the measured evidence.
+Start requires all connected nodes to satisfy media and clock readiness. An audio gate is device-local; a node that has not activated audio may catch up later only according to a tested policy. Never mark a participant acoustically synchronized from clock lock alone.
 
-## Current boundary
+## Incremental integration strategy
 
-The current repository is a working local/LAN-oriented browser pilot with a Node/WebSocket server and a synchronization core. It is not yet a complete public multi-user service: its active room registry is process-local, file uploads and range media reads use a local filesystem, and URL construction has been local-network-centric. The public edge backend and its end-to-end integration are new work, not assumed to exist.
+1. Fix and test all public base URL paths (API config, room response, QR code).
+2. Add the standalone Worker/router and one SQLite Durable Object per room. The local Node path remains untouched except for shared safe helpers and tests.
+3. Add durable room creation/join, host authorization, room snapshots, control messages and WebSocket relay.
+4. Add bounded chunked media storage and range-serving, including digest verification and TTL cleanup.
+5. Integrate the web client with the public upload protocol without regressing its local multipart upload path.
+6. Add Cloudflare integration tests and a smoke test for room creation, two participants, uploaded track, future start, pause/resume and cleanup.
+7. Deploy to a free account only if the dashboard allows it without payment details. If account verification demands a card, stop; use the local server plus a temporary Quick Tunnel for demos until a no-card public deployment is chosen.
+
+## Important scale constraint
+
+One Durable Object per room serializes room coordination and is a useful correctness boundary. Media chunks live in that room's storage in the first increment, so each room has finite quota behavior and the account storage cap is still finite. At higher traffic, evaluate moving media to a separate object store and introducing admission control. Do not add paid products or billing-backed resources automatically.
