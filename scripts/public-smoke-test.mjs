@@ -119,11 +119,11 @@ const watchdog = setTimeout(() => {
   process.exit(1);
 }, 90_000);
 try {
-  const executable = process.platform === "win32" ? "npm.cmd" : "npm";
-  child = spawn(executable, [
-    "exec", "--", "wrangler", "--config", CONFIG, "dev",
+  const wranglerBin = new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url);
+  child = spawn(process.execPath, [
+    wranglerBin.pathname, "--config", CONFIG, "dev",
     "--ip", "127.0.0.1", "--port", String(PORT)
-  ], { stdio: ["ignore", "pipe", "pipe"], shell: process.platform === "win32", env: { ...process.env, CI: "1", WRANGLER_SEND_METRICS: "false" } });
+  ], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CI: "1", WRANGLER_SEND_METRICS: "false" } });
   collect(child.stdout, output.stdout);
   collect(child.stderr, output.stderr);
 

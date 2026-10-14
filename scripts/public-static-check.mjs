@@ -14,6 +14,7 @@ const checks = [
   ["public room Durable Object binding", hasRoomBinding],
   ["SQLite Durable Object migration", hasSqliteMigration],
   ["unique room lifecycle handlers", ["webSocketClose","webSocketError","alarm","beginUpload","putChunk","completeUpload","serveMedia","diagnostics"].every(name => worker.split("async " + name + "(").length === 2)],
+  ["Durable Object receives original WebSocket request", worker.includes('return this.openSocket(request);')],
   ["room-scoped WebSocket routing", worker.includes('url.searchParams.get("room")') && app.includes("wsUrl(room)")],
   ["chunked upload endpoints", worker.includes("/_internal/upload/begin") && worker.includes("async putChunk")],
   ["server-side SHA-256 verification", worker.includes('crypto.subtle.digest("SHA-256", joined)')],

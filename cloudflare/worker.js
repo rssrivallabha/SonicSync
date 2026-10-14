@@ -158,7 +158,7 @@ export class RoomCoordinator {
     if (complete && request.method === "POST") return this.completeUpload(request, complete[1]);
     const media = path.match(/^\/_internal\/media\/([a-f0-9]{24,64})$/i);
     if (media && (request.method === "GET" || request.method === "HEAD")) return this.serveMedia(request, media[1]);
-    if (request.headers.get("upgrade")?.toLowerCase() === "websocket" && path === "/_internal/ws") return this.openSocket();
+    if (request.headers.get("upgrade")?.toLowerCase() === "websocket" && path === "/_internal/ws") return this.openSocket(request);
     return json({ error: "Not found." }, 404);
   }
   async rateRoomCreate(request) {
