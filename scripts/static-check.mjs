@@ -67,6 +67,9 @@ checks.push(
  ['direct sync state guard', /m\.k==='syncRequest'&&isHost\(\)\)[\s\S]*if\(!roomStatePlaying\(\)\) return/.test(js) && /m\.k==='syncAt'&&!isHost\(\)\)[\s\S]*if\(!roomStatePlaying\(\)\) return/.test(js), 'direct sync can resurrect a paused/stopped node'],
  ['host disconnect safety', /hostGone/.test(js) && /stopLocalPlayback\(finite\(m\.position, currentLocalPosition\(\)\)\)/.test(js), 'speaker may continue locally after host loss']
 );
+checks.push(
+  ['host can close local room safely', server.includes('app.delete("/api/room/:room"') && server.includes('type: "roomClosed"') && server.includes("removeRoom(room)"), 'local room close endpoint missing or unauthenticated']
+);
 let failed = 0;
 for (const [name, ok, detail] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : ` — ${detail}`}`); if (!ok) failed++; }
 if (failed) process.exit(1);

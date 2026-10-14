@@ -358,6 +358,15 @@ app.get("/api/room/:room/diagnostics", (req, res) => {
   res.type("application/json").setHeader("Content-Disposition", `attachment; filename="sonicsync-${room.id}-diagnostics.json"`).send(JSON.stringify(payload, null, 2));
 });
 
+app.delete("/api/room/:room", (req, res) => {
+  const room = roomFor(req.params.room);
+  const hostToken = String(req.headers["x-sonicsync-host"] || "");
+  if (!room || !hostAuthorized(room, { hostToken })) return res.status(403).json({ error: "Invalid room or host authorization." });
+  broadcast(room, { type: "roomClosed", revision: room.revision, message: "The host closed this local room." });
+  removeRoom(room);
+  res.status(204).end();
+});
+
 app.post("/api/room", (req, res) => {
   if (!allowRate(`room:${clientIp(req)}`, 8, 60_000)) return res.status(429).json({ error: "Too many room requests. Try again in a minute." });
   if (rooms.size >= MAX_ROOMS) return res.status(503).json({ error: "Room capacity reached." });

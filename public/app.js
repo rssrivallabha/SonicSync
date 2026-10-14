@@ -193,6 +193,12 @@ $("#deviceName") && ($("#deviceName").value = state.deviceName);
 function boot() {
   state.backendConfigReady = api("/api/config").then(config => {
     state.backendMode = config.backendMode === "public" ? "public" : "local";
+    const endButton = $("#endRoomBtn");
+    const endNote = endButton?.parentElement?.querySelector(".tool-note");
+    if (endButton) endButton.textContent = state.backendMode === "public" ? "END ROOM" : "CLOSE ROOM";
+    if (endNote) endNote.textContent = state.backendMode === "public"
+      ? "Close this room, disconnect speakers, and delete uploaded media."
+      : "Disconnect local speakers; content-addressed audio stays cached for reuse.";
     if (state.backendMode === "public") {
       const picker = $("#file");
       if (picker) picker.accept = ".mp3,.wav,audio/mpeg,audio/wav";
@@ -1334,7 +1340,10 @@ drop?.addEventListener("drop", e => uploadSelected(e.dataTransfer.files[0]));
 
 $("#endRoomBtn")?.addEventListener("click", async () => {
   if (!isHost() || !state.room || !state.hostToken) return;
-  if (!confirm("End this room for every speaker and permanently remove its uploaded media?")) return;
+  const prompt = state.backendMode === "public"
+    ? "End this room for every speaker and permanently remove its uploaded media?"
+    : "Close this local room and disconnect all speakers? Cached audio may remain for reuse.";
+  if (!confirm(prompt)) return;
   const button = $("#endRoomBtn");
   if (button) button.disabled = true;
   try {
