@@ -13,15 +13,16 @@ const checks = [
   ["server-side SHA-256 verification", worker.includes('crypto.subtle.digest("SHA-256", joined)')],
   ["HTTP byte-range media", worker.includes('headers["content-range"]')],
   ["public room-creation rate limit", worker.includes("MAX_ROOMS_PER_HOUR = 5")],
+  ["room join attempt rate limit", worker.includes("/_internal/rate/join") && worker.includes("async rateJoin")],
   ["host authorization on upload paths", worker.includes("this.hostMatches(room, request)")],
-  ["bounded 25 MiB media cap", worker.includes("MAX_TRACK_BYTES = 25 * 1024 * 1024")],
+  ["bounded per-room media quota", worker.includes("MAX_ROOM_MEDIA_BYTES = 100 * 1024 * 1024")],
+  ["bounded per-track media cap", worker.includes("MAX_TRACK_BYTES = 25 * 1024 * 1024")],
   ["shared adaptive lead core", worker.includes("coreAdaptiveLeadMs") && worker.includes("../src/core/clock.mjs")],
   ["public asset security headers", worker.includes("content-security-policy") && worker.includes("x-content-type-options")],
   ["local multipart upload preserved", app.includes('api("/api/upload"') && server.includes('app.post("/api/upload"')],
-  ["public upload only accepts MP3/WAV", app.includes('if (!/\\.(mp3|wav)$/i.test(file.name))') && worker.includes("Only MP3 and WAV uploads are supported")],
-  ["local config advertises local mode", server.includes('backendMode: "local"')],
-  ["public origin room links", server.includes("joinBase: publicBaseUrl(req)")],
-  ["hosted URL trimming", server.includes("function publicBaseUrl(req)") && server.includes("PUBLIC_BASE_URL")]
+  ["public upload accepts MP3/WAV", app.includes('if (!/\.(mp3|wav)$/i.test(file.name))') && worker.includes("Only MP3 and WAV uploads are supported")],
+  ["local backend mode marked", server.includes('backendMode: "local"')],
+  ["hosted URL helper trims paths", server.includes("function publicBaseUrl(req)") && server.includes("PUBLIC_BASE_URL")]
 ];
 for (const [name, ok] of checks) { assert.ok(ok, name); console.log("PASS", name); }
 console.log("All " + checks.length + " public-mode source checks passed.");

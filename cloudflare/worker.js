@@ -6,6 +6,7 @@ const PROTOCOL_VERSION = 2;
 const MAX_CONTROL_BYTES = 128 * 1024;
 const MAX_ROOMS_PER_HOUR = 5;
 const MAX_CLIENTS = 32;
+const MAX_ROOM_MEDIA_BYTES = 100 * 1024 * 1024;
 const MAX_TRACK_BYTES = 25 * 1024 * 1024;
 const CHUNK_BYTES = 1024 * 1024;
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
@@ -21,6 +22,11 @@ function json(data, status = 200, extra = {}) {
 function randomHex(bytes = 16) {
   const b = crypto.getRandomValues(new Uint8Array(bytes));
   return Array.from(b, function (x) { return x.toString(16).padStart(2, "0"); }).join("");
+}
+function randomRoomCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(bytes, function (b) { return alphabet[b & 31]; }).join("");
 }
 function safeName(value) {
   return String(value || "track").replace(/[\u0000-\u001f\u007f/\\]/g, "").trim().slice(0, 120) || "track";
@@ -66,7 +72,7 @@ export default {
       });
       if (!limited.ok) return limited;
       for (let attempt = 0; attempt < 4; attempt++) {
-        const id = randomHex(4).slice(0, 6).toUpperCase();
+        const id = randomRoomCode();
         const hostToken = randomHex(32);
         const created = await roomStub(env, id).fetch("https://sonicsync-room.internal/_internal/create", {
           method: "POST", headers: { "content-type": "application/json" },
@@ -135,11 +141,14 @@ export class RoomCoordinator {
       this.sql.exec("CREATE TABLE IF NOT EXISTS media_chunks (upload_id TEXT NOT NULL, chunk_index INTEGER NOT NULL, body BLOB NOT NULL, PRIMARY KEY(upload_id, chunk_index))");
       this.sql.exec("CREATE TABLE IF NOT EXISTS room_create_rate (client_ip TEXT NOT NULL, created_at INTEGER NOT NULL)");
       this.sql.exec("CREATE INDEX IF NOT EXISTS room_create_rate_time ON room_create_rate(created_at)");
+      this.sql.exec("CREATE TABLE IF NOT EXISTS room_join_rate (client_ip TEXT NOT NULL, created_at INTEGER NOT NULL)");
+      this.sql.exec("CREATE INDEX IF NOT EXISTS room_join_rate_time ON room_join_rate(created_at)");
     });
   }
   async fetch(request) {
     const url = new URL(request.url), path = url.pathname;
     if (path === "/_internal/rate/room" && request.method === "POST") return this.rateRoomCreate(request);
+    if (path === "/_internal/rate/join" && request.method === "POST") return this.rateJoin(request);
     if (path === "/_internal/create" && request.method === "POST") return this.createRoom(request);
     if (path === "/_internal/exists" && request.method === "GET") return this.readRoom() ? new Response("ok") : new Response("not found", { status: 404 });
     if (path === "/_internal/diagnostics" && request.method === "GET") return this.diagnostics(request);
@@ -159,6 +168,14 @@ export class RoomCoordinator {
     const count = Number(this.sql.exec("SELECT COUNT(*) AS n FROM room_create_rate WHERE client_ip = ?", ip).toArray()[0]?.n || 0);
     if (count >= MAX_ROOMS_PER_HOUR) return json({ error: "Too many rooms created from this network. Try again later." }, 429);
     this.sql.exec("INSERT INTO room_create_rate (client_ip, created_at) VALUES (?, ?)", ip, now);
+    return new Response(null, { status: 204 });
+  }
+  async rateJoin(request) {
+    const ip = String(request.headers.get("x-client-ip") || "unknown").slice(0, 80), now = Date.now();
+    this.sql.exec("DELETE FROM room_join_rate WHERE created_at < ?", now - 60000);
+    const count = Number(this.sql.exec("SELECT COUNT(*) AS n FROM room_join_rate WHERE client_ip = ?", ip).toArray()[0]?.n || 0);
+    if (count >= 60) return json({ error: "Too many join attempts from this network. Try again in a minute." }, 429);
+    this.sql.exec("INSERT INTO room_join_rate (client_ip, created_at) VALUES (?, ?)", ip, now);
     return new Response(null, { status: 204 });
   }
   readRoom() {
@@ -265,10 +282,12 @@ export class RoomCoordinator {
       ceiling: ceiling
     });
   }
-  async openSocket() {
+  async openSocket(request) {
     if (!this.requireRoom()) return new Response("Room not found or expired.", { status: 404 });
+    if (this.ctx.getWebSockets().length >= MAX_CLIENTS * 2) return new Response("Room connection limit reached.", { status: 429 });
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
+    pair[1].serializeAttachment({ pending: true, clientIp: String(request.headers.get("cf-connecting-ip") || "unknown").slice(0, 80) });
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
   async webSocketMessage(ws, raw) {
@@ -280,7 +299,11 @@ export class RoomCoordinator {
     try { m = JSON.parse(text); } catch { return this.send(ws, { type: "error", message: "Invalid control packet." }); }
     if (!m || typeof m !== "object" || typeof m.type !== "string") return this.send(ws, { type: "error", message: "Invalid control packet." });
     let a = this.attachment(ws), items = this.clients(room);
-    if (!a && m.type === "join") {
+    if ((!a || !a.id) && m.type === "join") {
+      const ip = String(a?.clientIp || "unknown");
+      const limiter = this.env.ROOMS.get(this.env.ROOMS.idFromName("__sonicsync_global_control__"));
+      const limited = await limiter.fetch("https://sonicsync-room.internal/_internal/rate/join", { method: "POST", headers: { "x-client-ip": ip } });
+      if (!limited.ok) { this.send(ws, { type: "error", message: "Too many join attempts. Please wait before trying again." }); try { ws.close(4029, "Join rate limited"); } catch {} return; }
       const requestedHost = m.role === "host";
       const host = requestedHost && this.hostMatches(room, new Request("https://internal.invalid", { headers: { "x-sonicsync-host": String(m.hostToken || "") } }));
       if (requestedHost && !host) return this.send(ws, { type: "error", message: "Host authorization failed." });
@@ -510,6 +533,7 @@ export class RoomCoordinator {
     const room = this.readRoom(), now = Date.now();
     if (!room) {
       this.sql.exec("DELETE FROM room_create_rate WHERE created_at < ?", now - 3600000);
+      this.sql.exec("DELETE FROM room_join_rate WHERE created_at < ?", now - 60000);
       return;
     }
     if (now - room.createdAt >= ROOM_TTL_MS) {
@@ -717,6 +741,9 @@ export class RoomCoordinator {
     if (!/^[a-f0-9]{64}$/.test(sha256)) return json({ error: "Invalid SHA-256 digest." }, 400);
     const now = Date.now(); room.trackUploads = (room.trackUploads || []).filter(t => now - t < 3600000);
     if (room.trackUploads.length >= MAX_UPLOADS_PER_HOUR) return json({ error: "Room upload quota reached for this hour." }, 429);
+    const committedBytes = (room.queue || []).reduce((sum, track) => sum + Math.max(0, Number(track.bytes) || 0), 0);
+    const pendingBytes = this.sql.exec("SELECT payload FROM upload_sessions").toArray().reduce((sum, row) => sum + Math.max(0, Number(JSON.parse(row.payload).bytes) || 0), 0);
+    if (committedBytes + pendingBytes + bytes > MAX_ROOM_MEDIA_BYTES) return json({ error: "This room reached its 100 MiB media quota. Remove unused tracks or create a new room." }, 413);
     const uploadId = randomHex(24), meta = { name: safeName(body.name), mime: canonicalMime(body.name), bytes: bytes, sha256: sha256, chunkSize: CHUNK_BYTES, chunkCount: Math.ceil(bytes / CHUNK_BYTES) };
     this.sql.exec("INSERT INTO upload_sessions (id, payload, created_at) VALUES (?, ?, ?)", uploadId, JSON.stringify(meta), now);
     await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
@@ -760,8 +787,12 @@ export class RoomCoordinator {
       this.sql.exec("DELETE FROM upload_sessions WHERE id = ?", uploadId); this.sql.exec("DELETE FROM media_chunks WHERE upload_id = ?", uploadId);
       return json({ error: "SHA-256 verification failed. Upload was rejected." }, 422);
     }
-    const track = { id: digest, url: "/media/" + room.id + "/" + uploadId, token: uploadId, name: meta.name, mime: meta.mime, bytes: meta.bytes, sha256: digest, durationSec: null };
-    const duplicate = (room.queue || []).find(t => t.sha256 === digest); if (duplicate) track.durationSec = duplicate.durationSec || null;
+    let track = { id: digest, url: "/media/" + room.id + "/" + uploadId, token: uploadId, name: meta.name, mime: meta.mime, bytes: meta.bytes, sha256: digest, durationSec: null };
+    const duplicate = (room.queue || []).find(t => t.sha256 === digest);
+    if (duplicate) {
+      this.sql.exec("DELETE FROM media_chunks WHERE upload_id = ?", uploadId);
+      track = { ...duplicate };
+    }
     room.queue = Array.isArray(room.queue) ? room.queue : []; room.queue.push(track); room.queueIndex = room.queue.length - 1;
     room.track = track; room.trackGeneration++; room.state = "ready"; room.position = room.startPosition = 0;
     room.startAt = room.startedAt = room.pauseAt = room.stopAt = null; room.pausePosition = room.stopPosition = null; room.pendingSeek = null; room.trackUploads.push(Date.now());
