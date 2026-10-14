@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import { adaptiveLeadMs as coreAdaptiveLeadMs } from "../src/core/clock.mjs";
+import { adaptiveLeadMs as coreAdaptiveLeadMs } from "../src/core/clock.mjs";
 
 const PROTOCOL_VERSION = 2;
 const MAX_CONTROL_BYTES = 128 * 1024;
@@ -687,16 +688,20 @@ export class RoomCoordinator {
     if (room.state === "armed" && room.startAt != null && now >= room.startAt) {
       room.startedAt = room.startAt; room.startAt = null; room.state = "playing"; this.bump(room); this.saveRoom(room);
       this.broadcast(room, { type: "playing", revision: room.revision, timelineEpoch: room.timelineEpoch }); this.broadcastSnapshot(room);
+      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
     } else if (room.state === "pausing" && room.pauseAt != null && now >= room.pauseAt) {
       room.position = room.pausePosition; room.startPosition = room.position; room.startedAt = null; room.pauseAt = null; room.pausePosition = null; room.state = "paused";
       this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "paused", revision: room.revision, timelineEpoch: room.timelineEpoch, position: room.position }); this.broadcastSnapshot(room);
+      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
     } else if (room.state === "stopping" && room.stopAt != null && now >= room.stopAt) {
       room.position = this.position(room, room.stopAt); room.startPosition = room.position; room.startedAt = null; room.stopAt = null; room.state = "stopped";
       this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "stopped", revision: room.revision, timelineEpoch: room.timelineEpoch, position: room.position }); this.broadcastSnapshot(room);
-    } else if (room.pendingSeek && now >= room.pendingSeek.effectiveAt) {
+      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
+    } else if (room.pendingSeek && now >= room.pendingSeek.effectiveAt {
       const p = room.pendingSeek.position, at = room.pendingSeek.effectiveAt;
       room.startPosition = p; room.startedAt = at; room.position = p; room.pendingSeek = null;
       this.bump(room); this.saveRoom(room); this.broadcast(room, { type: "seekCommit", revision: room.revision, timelineEpoch: room.timelineEpoch, startedAt: at, position: p }); this.broadcastSnapshot(room);
+      await this.ctx.storage.setAlarm(Math.min(room.createdAt + ROOM_TTL_MS, now + 600000));
     }
     const sessions = this.sql.exec("SELECT id, created_at FROM upload_sessions").toArray();
     for (const item of sessions) if (now - item.created_at > 600000) { this.sql.exec("DELETE FROM upload_sessions WHERE id = ?", item.id); this.sql.exec("DELETE FROM media_chunks WHERE upload_id = ?", item.id); }

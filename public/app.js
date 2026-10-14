@@ -1191,7 +1191,7 @@ async function uploadPublicTrack(file) {
   const config = await api("/api/config");
   const maxBytes = Number(config.uploadMaxBytes) || (25 * 1024 * 1024);
   if (file.size > maxBytes) throw new Error("Public beta track limit is 25 MiB. Choose a smaller MP3/WAV file.");
-  if (!/\\.(mp3|wav)$/i.test(file.name)) throw new Error("Public beta currently accepts MP3 and WAV files.");
+  if (!/\.(mp3|wav)$/i.test(file.name)) throw new Error("Public beta currently accepts MP3 and WAV files.");
   if (!crypto?.subtle) throw new Error("SHA-256 is unavailable. Open SonicSync over HTTPS.");
   $("#fileTitle").textContent = "Verifying " + file.name;
   const raw = await file.arrayBuffer();
@@ -1200,7 +1200,7 @@ async function uploadPublicTrack(file) {
   const headers = { "X-SonicSync-Room": state.room, "X-SonicSync-Host": state.hostToken, "Content-Type": "application/json" };
   const begin = await api("/api/public-upload/" + state.room + "/begin", {
     method: "POST", headers,
-    body: JSON.stringify({ name: file.name, mime: /\\.wav$/i.test(file.name) ? "audio/wav" : "audio/mpeg", bytes: file.size, sha256 })
+    body: JSON.stringify({ name: file.name, mime: /\.wav$/i.test(file.name) ? "audio/wav" : "audio/mpeg", bytes: file.size, sha256 })
   });
   const chunkSize = Number(begin.chunkSize) || 1024 * 1024, count = Number(begin.chunkCount);
   for (let index = 0; index < count; index++) {

@@ -6,7 +6,7 @@ This is a separate public deployment target. It does not replace the local Node.
 
 1. Have Node.js 22+ installed.
 2. Run `npm install` at the repository root.
-3. Run `npm run validate` and `npm run public:check`. The public check includes a Wrangler bundle/config dry-run.
+3. Run `npm run validate` and `npm run public:check`. The public check includes a Wrangler bundle/config dry-run. The public check includes a Wrangler bundle/config dry-run.
 4. Install/resolve Wrangler with `npm install` (Wrangler is a development dependency) and verify it with `npm exec -- wrangler --version`.
 5. Run `npm run public:dev` and test room creation/join, upload an MP3/WAV under 25 MiB, media Range fetch, playback controls, pause/resume, and two devices.
 6. Only after local Worker tests pass, deploy with `npm run public:deploy`.
