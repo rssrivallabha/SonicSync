@@ -29,7 +29,7 @@ No R2 bucket is required for the first increment. Cloudflare documents a free R2
 - Playback: range-capable media route; each client fetches and decodes locally, then follows the shared timeline
 - WebSocket: room-specific route such as /ws?room=ABC123; the edge worker sends the connection to that room's Durable Object
 - WebRTC: existing peer negotiation remains a direct path; WebSocket relay is for signaling/fallback
-- Expiry: four-hour per-room TTL and deletion of expired media chunks
+- Expiry: four-hour per-room TTL, two-room global admission cap, and deletion of expired media chunks
 
 ## Public control-plane invariants
 
@@ -37,7 +37,7 @@ No R2 bucket is required for the first increment. Cloudflare documents a free R2
 - Host operations require a random host token, checked server-side.
 - Client-supplied revisions, device telemetry, MIME types, filenames, hashes, byte counts and room codes are untrusted.
 - All command payloads are schema-validated and bounded.
-- Limit rooms/devices (eight simultaneous devices per room in the free-tier beta), upload size, chunks, upload frequency, active room duration, and retained media.
+- Limit rooms/devices (six devices per room, with two simultaneously active public rooms globally), upload size, chunks, upload frequency, active room duration, and retained media.
 - Content-Length, chunk index, expected chunk size and total byte count are validated.
 - A track remains unplayable until every expected chunk is present and the computed SHA-256 matches.
 - A stale command or timeline epoch cannot alter current playback.

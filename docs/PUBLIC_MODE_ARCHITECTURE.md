@@ -37,7 +37,7 @@ No R2 bucket is required for the first increment. Cloudflare documents a free R2
 - Host operations require a random host token, checked server-side.
 - Client-supplied revisions, device telemetry, MIME types, filenames, hashes, byte counts and room codes are untrusted.
 - All command payloads are schema-validated and bounded.
-- Limit rooms/devices, upload size, chunks, upload frequency, active room duration, and retained media.
+- Limit rooms/devices (two active rooms globally and six simultaneous devices per room), upload size, chunks, upload frequency, active room duration, and retained media.
 - Content-Length, chunk index, expected chunk size and total byte count are validated.
 - A track remains unplayable until every expected chunk is present and the computed SHA-256 matches.
 - A stale command or timeline epoch cannot alter current playback.

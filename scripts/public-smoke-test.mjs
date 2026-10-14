@@ -135,8 +135,42 @@ try {
   const created = await jsonRequest("/api/room", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   assert.equal(created.response.status, 201, JSON.stringify(created.body));
   const { id: room, hostToken } = created.body;
+  const cleanupRooms = [{ id: room, token: hostToken }];
   assert.match(room, /^[A-Z0-9]{6}$/);
   assert.match(hostToken, /^[a-f0-9]{64}$/);
+
+  stage = "global room capacity";
+  const secondRoomResult = await jsonRequest("/api/room", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+  });
+  assert.equal(secondRoomResult.response.status, 201, JSON.stringify(secondRoomResult.body));
+  cleanupRooms.push({ id: secondRoomResult.body.id, token: secondRoomResult.body.hostToken });
+  const atCapacity = await jsonRequest("/api/room", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+  });
+  assert.equal(atCapacity.response.status, 429, JSON.stringify(atCapacity.body));
+
+  const invalidClose = await fetch(BASE + "/api/room/" + secondRoomResult.body.id, {
+    method: "DELETE", headers: { "X-SonicSync-Host": "0".repeat(64) }, signal: AbortSignal.timeout(8000)
+  });
+  assert.equal(invalidClose.status, 403, "A bad token must not free a room slot.");
+
+  const releaseSlot = await fetch(BASE + "/api/room/" + secondRoomResult.body.id, {
+    method: "DELETE", headers: { "X-SonicSync-Host": secondRoomResult.body.hostToken }, signal: AbortSignal.timeout(8000)
+  });
+  assert.equal(releaseSlot.status, 204);
+  cleanupRooms.pop();
+  const afterRelease = await jsonRequest("/api/room", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+  });
+  assert.equal(afterRelease.response.status, 201, JSON.stringify(afterRelease.body));
+  cleanupRooms.push({ id: afterRelease.body.id, token: afterRelease.body.hostToken });
+  const releaseAgain = await fetch(BASE + "/api/room/" + afterRelease.body.id, {
+    method: "DELETE", headers: { "X-SonicSync-Host": afterRelease.body.hostToken }, signal: AbortSignal.timeout(8000)
+  });
+  assert.equal(releaseAgain.status, 204);
+  cleanupRooms.pop();
+  console.log("PASS two-room global cap, authenticated slot release, and room creation after release");
   console.log("PASS room creation and host token");
 
   stage = "open host websocket";
@@ -314,6 +348,15 @@ try {
   clearTimeout(watchdog);
   try { host?.close(); } catch {}
   try { speaker?.close(); } catch {}
+  for (const reservation of (typeof cleanupRooms === "undefined" ? [] : cleanupRooms).reverse()) {
+    try {
+      await fetch(BASE + "/api/room/" + reservation.id, {
+        method: "DELETE",
+        headers: { "X-SonicSync-Host": reservation.token },
+        signal: AbortSignal.timeout(3000)
+      });
+    } catch {}
+  }
   if (child && child.exitCode === null) {
     child.kill("SIGTERM");
     await Promise.race([once(child, "exit").catch(() => {}), sleep(4000)]);
