@@ -117,7 +117,16 @@ function rtcSend(peerId, message, channel = "control") {
 function rtcBroadcast(message, channel = "control") {
   let sent = 0; for (const [peerId] of state.rtc.peers) if (rtcSend(peerId, message, channel)) sent++; return sent;
 }
-async function api(url, options = {}) { const r = await fetch(url, options); const text = await r.text(); if (!r.ok) throw new Error(text || `HTTP ${r.status}`); return text ? JSON.parse(text) : {}; }
+async function api(url, options = {}) {
+  const r = await fetch(url, options);
+  const text = await r.text();
+  if (!r.ok) {
+    let message = text;
+    try { const payload = text ? JSON.parse(text) : null; message = payload?.error || payload?.message || text; } catch {}
+    throw new Error(message || `HTTP ${r.status}`);
+  }
+  return text ? JSON.parse(text) : {};
+}
 function deviceName() { if (state.deviceName) return state.deviceName; return (IS_IOS || /Android/i.test(navigator.userAgent) ? "Phone" : "Device") + " " + Math.random().toString(36).slice(2, 5).toUpperCase(); }
 function cryptoRandomId() { try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(36).slice(2)}`; } }
 
@@ -184,6 +193,12 @@ $("#deviceName") && ($("#deviceName").value = state.deviceName);
 function boot() {
   state.backendConfigReady = api("/api/config").then(config => {
     state.backendMode = config.backendMode === "public" ? "public" : "local";
+    if (state.backendMode === "public") {
+      const picker = $("#file");
+      if (picker) picker.accept = ".mp3,.wav,audio/mpeg,audio/wav";
+      const formats = $("#fileFormats");
+      if (formats) formats.textContent = "MP3 / WAV only in public beta • maximum 25 MiB per track";
+    }
     return state.backendMode;
   }).catch(() => {
     state.backendMode = "local";
@@ -237,6 +252,17 @@ async function connect(room, role, name, hostToken) {
 }
 
 function handle(m) {
+  if (m.type === "roomClosed") {
+    state.intentionallyClosed = true;
+    clearTimeout(state.reconnectTimer);
+    clearInterval(state.syncTimer); clearInterval(state.telemetryTimer); clearInterval(state.clockBurstTimer); clearInterval(state.driftTimer);
+    stopLocalPlayback(finite(m.position, currentLocalPosition()));
+    state.playing = false;
+    if (isHost()) localStorage.removeItem("sonicsync.hostToken");
+    log("ROOM CLOSED • " + (m.message || "The host ended this room."));
+    setTimeout(() => { location.href = "/"; }, 350);
+    return;
+  }
   if (m.type === "error") { log(`ERROR • ${m.message}`); alert(m.message); return; }
   if (m.type === "syncReply") { finishClockSync(m); return; }
   if (m.type === "welcome") {
@@ -1306,6 +1332,21 @@ const drop = $("#drop");
 ["dragleave", "drop"].forEach(type => drop?.addEventListener(type, e => { e.preventDefault(); drop.classList.remove("drag"); }));
 drop?.addEventListener("drop", e => uploadSelected(e.dataTransfer.files[0]));
 
+$("#endRoomBtn")?.addEventListener("click", async () => {
+  if (!isHost() || !state.room || !state.hostToken) return;
+  if (!confirm("End this room for every speaker and permanently remove its uploaded media?")) return;
+  const button = $("#endRoomBtn");
+  if (button) button.disabled = true;
+  try {
+    await api("/api/room/" + state.room, { method: "DELETE", headers: { "X-SonicSync-Host": state.hostToken } });
+    state.intentionallyClosed = true;
+    localStorage.removeItem("sonicsync.hostToken");
+    location.href = "/";
+  } catch (e) {
+    if (button) button.disabled = false;
+    alert("Could not close the room: " + e.message);
+  }
+});
 $("#copyBtn")?.addEventListener("click", async () => { try { await navigator.clipboard.writeText(`${location.origin}/?room=${state.room}`); log("JOIN LINK COPIED"); } catch { log("COPY FAILED • browser clipboard permission denied."); } });
 $("#modalCopy")?.addEventListener("click", async () => { try { await navigator.clipboard.writeText(`${location.origin}/?room=${state.room}`); log("JOIN LINK COPIED"); } catch {} });
 $("#qrBtn")?.addEventListener("click", () => { $("#modalRoom").textContent = `ROOM ${state.room}`; $("#qr").src = `/api/qr/${state.room}`; $("#joinModal").classList.remove("hidden"); });

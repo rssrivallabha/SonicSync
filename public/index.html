@@ -68,7 +68,7 @@
           <input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac,.flac,.webm">
           <div class="drop-icon">↥</div>
           <strong id="fileTitle">Drop an audio file here</strong>
-          <span>MP3 / WAV / M4A / OGG / AAC / FLAC / WebM</span>
+          <span id="fileFormats">MP3 / WAV / M4A / OGG / AAC / FLAC / WebM</span>
         </div>
         <div class="track" id="trackInfo">
           <div class="cover">♫</div>
@@ -88,6 +88,7 @@
         </div>
         <div class="hint-line" id="readyBarrier">Waiting for track and speaker readiness.</div>
         <div class="host-tools"><button id="lockBtn" class="ghost">LOCK ROOM</button><span class="tool-note">Lock prevents new joins while the party is live.</span></div>
+        <div class="host-tools"><button id="endRoomBtn" class="ghost">END ROOM</button><span class="tool-note">Close this room and immediately remove its uploaded media.</span></div>
 
         <div class="timeline">
           <div class="time"><span id="pos">00:00</span><span id="dur">00:00</span></div>
