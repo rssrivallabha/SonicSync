@@ -172,6 +172,7 @@ export class RoomCoordinator {
     if (path === "/_internal/rooms/release" && request.method === "POST") return this.releaseRoom(request);
     if (path === "/_internal/create" && request.method === "POST") return this.createRoom(request);
     if (path === "/_internal/exists" && request.method === "GET") return this.readRoom() ? new Response("ok") : new Response("not found", { status: 404 });
+    if (path === "/_internal/delete" && request.method === "DELETE") return this.deleteRoom(request);
     if (path === "/_internal/diagnostics" && request.method === "GET") return this.diagnostics(request);
     if (path === "/_internal/upload/begin" && request.method === "POST") return this.beginUpload(request);
     const chunk = path.match(/^\/_internal\/upload\/([a-f0-9]{24,64})\/(\d+)$/i);

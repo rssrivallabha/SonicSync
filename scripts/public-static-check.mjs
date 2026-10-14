@@ -17,6 +17,7 @@ const checks = [
   ["telemetry fanout avoids repetitive SQLite writes", !worker.slice(worker.indexOf('if (m.type === "telemetry")'), worker.indexOf('if (m.type === "ready")', worker.indexOf('if (m.type === "telemetry")'))).includes("saveRoom(room)")],
   ["public room bounds", worker.includes("const MAX_CLIENTS = 6;") && worker.includes("const MAX_ACTIVE_ROOMS = 2;") && worker.includes("const ROOM_TTL_MS = 4 * 60 * 60 * 1000;")],
   ["global active-room registry", worker.includes("active_public_rooms") && worker.includes("async reserveRoom(request)") && worker.includes("async releaseRoom(request)")],
+  ["internal delete route is wired", worker.includes('path === "/_internal/delete" && request.method === "DELETE"') && worker.includes("async deleteRoom(request)")],
   ["host can close room and release reservation", worker.includes("async deleteRoom(request)") && app.includes('api("/api/room/" + state.room, { method: "DELETE"') && html.includes('id="endRoomBtn"')],
   ["room closure stops clients safely", worker.includes('type: "roomClosed"') && app.includes('if (m.type === "roomClosed")')],
   ["frontend cache busting", html.includes("app.js?v=10.1.0") && html.includes("style.css?v=10.1.0") && serviceWorker.includes("sonicsync-shell-v10.1.0")],
